@@ -6294,13 +6294,8 @@
             };
             
             photoArchive.unshift(photo);
-            // v0.210: Save to IndexedDB (or localStorage fallback)
             try {
-                if (typeof savePhotoArchive === 'function') {
-                    savePhotoArchive();
-                } else {
-                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                }
+                localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
             } catch (e) {
                 showNotification('STORAGE ERROR: Photo saved to session only');
             }
@@ -6335,195 +6330,6 @@
             modal.style.display = 'none';
         }
 
-
-        // ================= v0.210 INDEXEDDB PHOTO STORAGE =================
-        // IndexedDB has much higher storage limits (50MB+ vs 5MB for localStorage)
-        // This prevents "storage full" errors when taking many photos
-        
-        const PhotoDB = {
-            db: null,
-            dbName: 'PipBoyPhotos',
-            storeName: 'photos',
-            version: 1,
-            
-            // Initialize IndexedDB
-            init: function() {
-                return new Promise((resolve, reject) => {
-                    if (!window.indexedDB) {
-                        console.warn('IndexedDB not available, falling back to localStorage');
-                        resolve(false);
-                        return;
-                    }
-                    
-                    const request = indexedDB.open(this.dbName, this.version);
-                    
-                    request.onerror = () => {
-                        console.error('IndexedDB error:', request.error);
-                        resolve(false);
-                    };
-                    
-                    request.onsuccess = () => {
-                        this.db = request.result;
-                        console.log('IndexedDB initialized successfully');
-                        resolve(true);
-                    };
-                    
-                    request.onupgradeneeded = (event) => {
-                        const db = event.target.result;
-                        if (!db.objectStoreNames.contains(this.storeName)) {
-                            db.createObjectStore(this.storeName, { keyPath: 'id', autoIncrement: true });
-                        }
-                    };
-                });
-            },
-            
-            // Add photo to IndexedDB
-            add: function(photoEntry) {
-                return new Promise((resolve, reject) => {
-                    if (!this.db) {
-                        reject(new Error('IndexedDB not initialized'));
-                        return;
-                    }
-                    
-                    const transaction = this.db.transaction([this.storeName], 'readwrite');
-                    const store = transaction.objectStore(this.storeName);
-                    const request = store.add(photoEntry);
-                    
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error);
-                });
-            },
-            
-            // Get all photos from IndexedDB
-            getAll: function() {
-                return new Promise((resolve, reject) => {
-                    if (!this.db) {
-                        reject(new Error('IndexedDB not initialized'));
-                        return;
-                    }
-                    
-                    const transaction = this.db.transaction([this.storeName], 'readonly');
-                    const store = transaction.objectStore(this.storeName);
-                    const request = store.getAll();
-                    
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error);
-                });
-            },
-            
-            // Get photo count
-            count: function() {
-                return new Promise((resolve, reject) => {
-                    if (!this.db) {
-                        reject(new Error('IndexedDB not initialized'));
-                        return;
-                    }
-                    
-                    const transaction = this.db.transaction([this.storeName], 'readonly');
-                    const store = transaction.objectStore(this.storeName);
-                    const request = store.count();
-                    
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error);
-                });
-            },
-            
-            // Delete photo by ID
-            delete: function(id) {
-                return new Promise((resolve, reject) => {
-                    if (!this.db) {
-                        reject(new Error('IndexedDB not initialized'));
-                        return;
-                    }
-                    
-                    const transaction = this.db.transaction([this.storeName], 'readwrite');
-                    const store = transaction.objectStore(this.storeName);
-                    const request = store.delete(id);
-                    
-                    request.onsuccess = () => resolve();
-                    request.onerror = () => reject(request.error);
-                });
-            },
-            
-            // Clear all photos
-            clear: function() {
-                return new Promise((resolve, reject) => {
-                    if (!this.db) {
-                        reject(new Error('IndexedDB not initialized'));
-                        return;
-                    }
-                    
-                    const transaction = this.db.transaction([this.storeName], 'readwrite');
-                    const store = transaction.objectStore(this.storeName);
-                    const request = store.clear();
-                    
-                    request.onsuccess = () => resolve();
-                    request.onerror = () => reject(request.error);
-                });
-            }
-        };
-        
-        // Photo archive wrapper that uses IndexedDB with localStorage fallback
-        let photoArchive = [];
-        let photoArchiveReady = false;
-        
-        // Initialize photo storage
-        async function initPhotoStorage() {
-            try {
-                const indexedDBAvailable = await PhotoDB.init();
-                
-                if (indexedDBAvailable) {
-                    // Migrate existing photos from localStorage to IndexedDB
-                    const localStoragePhotos = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
-                    if (localStoragePhotos.length > 0) {
-                        console.log('Migrating', localStoragePhotos.length, 'photos from localStorage to IndexedDB');
-                        for (const photo of localStoragePhotos) {
-                            await PhotoDB.add(photo);
-                        }
-                        // Clear localStorage after successful migration
-                        localStorage.removeItem('pipboy-photos');
-                        console.log('Migration complete');
-                    }
-                    
-                    // Load photos from IndexedDB
-                    photoArchive = await PhotoDB.getAll();
-                    photoArchiveReady = true;
-                    console.log('Loaded', photoArchive.length, 'photos from IndexedDB');
-                } else {
-                    // Fallback to localStorage
-                    photoArchive = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
-                    photoArchiveReady = true;
-                    console.log('Using localStorage for photos (IndexedDB not available)');
-                }
-            } catch (e) {
-                console.error('Error initializing photo storage:', e);
-                // Fallback to localStorage
-                photoArchive = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
-                photoArchiveReady = true;
-            }
-        }
-        
-        // Save photo archive (to IndexedDB or localStorage)
-        async function savePhotoArchive() {
-            try {
-                if (PhotoDB.db) {
-                    // Using IndexedDB - photos are already saved individually
-                    // Just update the in-memory array
-                    photoArchive = await PhotoDB.getAll();
-                } else {
-                    // Fallback to localStorage
-                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                }
-            } catch (e) {
-                console.error('Error saving photo archive:', e);
-                // Try localStorage as fallback
-                try {
-                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                } catch (e2) {
-                    console.error('localStorage also failed:', e2);
-                }
-            }
-        }
 
         let photoArchive = JSON.parse(localStorage.getItem('pipboy-photos')) || [];
 
@@ -6600,15 +6406,7 @@
             photoArchive.unshift(entry);
             let pruned = 0;
             for (;;) {
-                try {
-                    // v0.210: Save to IndexedDB (or localStorage fallback)
-                    if (typeof savePhotoArchive === 'function') {
-                        savePhotoArchive();
-                    } else {
-                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                    }
-                    break;
-                }
+                try { localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive)); break; }
                 catch (e) {
                     if (photoArchive.length <= 1) {
                         photoArchive.shift();
@@ -6845,12 +6643,7 @@
                     color: "#ff3333",
                     action: () => {
                         photoArchive.splice(idx, 1);
-                        // v0.210: Save to IndexedDB (or localStorage fallback)
-                        if (typeof savePhotoArchive === 'function') {
-                            savePhotoArchive();
-                        } else {
-                            localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                        }
+                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
                         closePhotoViewer();
                         renderPhotoGallery();
                     }
@@ -6874,12 +6667,7 @@
                     color: "#ff3333",
                     action: () => {
                         photoArchive.splice(idx, 1);
-                        // v0.210: Save to IndexedDB (or localStorage fallback)
-                        if (typeof savePhotoArchive === 'function') {
-                            savePhotoArchive();
-                        } else {
-                            localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                        }
+                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
                         renderPhotoGallery(); // refresh gallery
                     }
                 },
@@ -9182,17 +8970,7 @@
         function saveMailPhoto(dataUrl) {
             if (!dataUrl || typeof dataUrl !== 'string') return;
             photoArchive.unshift(dataUrl); // string entries are first-class (entryPip handles both)
-            // v0.210: Save to IndexedDB (or localStorage fallback)
-            try {
-                if (typeof savePhotoArchive === 'function') {
-                    savePhotoArchive();
-                } else {
-                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                }
-            } catch (e) {
-                console.error('Error saving mail photo:', e);
-            }
-        }
+            try { localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive)); }
             catch (e) { showNotification('DATABANK FULL -- PHOTO COULD NOT BE FILED.'); return; }
             const camTab = document.getElementById('tab-cam');
             if (camTab && camTab.classList.contains('active')) renderPhotoGallery();
@@ -10283,16 +10061,6 @@
         } catch (e) {
             console.error('Error during auto-archive on startup:', e);
             // Don't let archive errors prevent app from loading
-        }
-
-        // v0.210: Initialize IndexedDB photo storage (much higher limits than localStorage)
-        try {
-            if (typeof initPhotoStorage === 'function') {
-                initPhotoStorage();
-            }
-        } catch (e) {
-            console.error('Error initializing photo storage:', e);
-            // Don't let photo storage errors prevent app from loading
         }
 
         // ==================== PWA INSTALL PIPELINE (v0.32) ====================
