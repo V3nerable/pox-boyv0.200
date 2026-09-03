@@ -5419,15 +5419,33 @@
             if (userMarker && userMarkerCold !== !!cold) { markersGroup.removeLayer(userMarker); userMarker = null; } // restyle on state flip
             userMarkerCold = !!cold;
             if (!userMarker) {
-                const selfStyle = userMarkerCold
-                    ? 'background-color: transparent; width: 14px; height: 14px; border-radius: 50%; border: 2px dashed var(--pip-color-dim);'
-                    : 'background-color: var(--pip-color); width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--pip-bg); box-shadow: 0 0 10px var(--pip-color);';
-                const userIcon = L.divIcon({
-                    className: 'custom-pip-marker',
-                    html: `<div style="${selfStyle}"></div>`,
-                    iconSize: [14, 14],
-                    iconAnchor: [7, 7]
-                });
+                // v0.213: Show user avatar on map instead of green dot
+                const avatarImg = localStorage.getItem('pipboy-avatarimg');
+                let userIcon;
+                
+                if (avatarImg && !userMarkerCold) {
+                    // Show avatar image (full color, not green scale)
+                    userIcon = L.divIcon({
+                        className: 'custom-pip-marker',
+                        html: `<div style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--pip-bg); box-shadow: 0 0 10px var(--pip-color); overflow: hidden;">
+                            <img src="${avatarImg}" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>`,
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16]
+                    });
+                } else {
+                    // Fallback to green dot (or ghost state)
+                    const selfStyle = userMarkerCold
+                        ? 'background-color: transparent; width: 14px; height: 14px; border-radius: 50%; border: 2px dashed var(--pip-color-dim);'
+                        : 'background-color: var(--pip-color); width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--pip-bg); box-shadow: 0 0 10px var(--pip-color);';
+                    userIcon = L.divIcon({
+                        className: 'custom-pip-marker',
+                        html: `<div style="${selfStyle}"></div>`,
+                        iconSize: [14, 14],
+                        iconAnchor: [7, 7]
+                    });
+                }
+                
                 userMarker = L.marker([lat, lng], {icon: userIcon, zIndexOffset: 800})
                     .addTo(markersGroup);
                 userMarker.on('click', (e) => {
@@ -6294,8 +6312,13 @@
             };
             
             photoArchive.unshift(photo);
+            // v0.210: Save to IndexedDB (or localStorage fallback)
             try {
-                localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                if (typeof savePhotoArchive === 'function') {
+                    savePhotoArchive();
+                } else {
+                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                }
             } catch (e) {
                 showNotification('STORAGE ERROR: Photo saved to session only');
             }
@@ -6331,7 +6354,195 @@
         }
 
 
-        let photoArchive = JSON.parse(localStorage.getItem('pipboy-photos')) || [];
+        // ================= v0.210 INDEXEDDB PHOTO STORAGE =================
+        // IndexedDB has much higher storage limits (50MB+ vs 5MB for localStorage)
+        // This prevents "storage full" errors when taking many photos
+        
+        const PhotoDB = {
+            db: null,
+            dbName: 'PipBoyPhotos',
+            storeName: 'photos',
+            version: 1,
+            
+            // Initialize IndexedDB
+            init: function() {
+                return new Promise((resolve, reject) => {
+                    if (!window.indexedDB) {
+                        console.warn('IndexedDB not available, falling back to localStorage');
+                        resolve(false);
+                        return;
+                    }
+                    
+                    const request = indexedDB.open(this.dbName, this.version);
+                    
+                    request.onerror = () => {
+                        console.error('IndexedDB error:', request.error);
+                        resolve(false);
+                    };
+                    
+                    request.onsuccess = () => {
+                        this.db = request.result;
+                        console.log('IndexedDB initialized successfully');
+                        resolve(true);
+                    };
+                    
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(this.storeName)) {
+                            db.createObjectStore(this.storeName, { keyPath: 'id', autoIncrement: true });
+                        }
+                    };
+                });
+            },
+            
+            // Add photo to IndexedDB
+            add: function(photoEntry) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) {
+                        reject(new Error('IndexedDB not initialized'));
+                        return;
+                    }
+                    
+                    const transaction = this.db.transaction([this.storeName], 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.add(photoEntry);
+                    
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            
+            // Get all photos from IndexedDB
+            getAll: function() {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) {
+                        reject(new Error('IndexedDB not initialized'));
+                        return;
+                    }
+                    
+                    const transaction = this.db.transaction([this.storeName], 'readonly');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.getAll();
+                    
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            
+            // Get photo count
+            count: function() {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) {
+                        reject(new Error('IndexedDB not initialized'));
+                        return;
+                    }
+                    
+                    const transaction = this.db.transaction([this.storeName], 'readonly');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.count();
+                    
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            
+            // Delete photo by ID
+            delete: function(id) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) {
+                        reject(new Error('IndexedDB not initialized'));
+                        return;
+                    }
+                    
+                    const transaction = this.db.transaction([this.storeName], 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.delete(id);
+                    
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            
+            // Clear all photos
+            clear: function() {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) {
+                        reject(new Error('IndexedDB not initialized'));
+                        return;
+                    }
+                    
+                    const transaction = this.db.transaction([this.storeName], 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.clear();
+                    
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        };
+        
+        // Photo archive wrapper that uses IndexedDB with localStorage fallback
+        let photoArchive = [];
+        let photoArchiveReady = false;
+        
+        // Initialize photo storage
+        async function initPhotoStorage() {
+            try {
+                const indexedDBAvailable = await PhotoDB.init();
+                
+                if (indexedDBAvailable) {
+                    // Migrate existing photos from localStorage to IndexedDB
+                    const localStoragePhotos = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
+                    if (localStoragePhotos.length > 0) {
+                        console.log('Migrating', localStoragePhotos.length, 'photos from localStorage to IndexedDB');
+                        for (const photo of localStoragePhotos) {
+                            await PhotoDB.add(photo);
+                        }
+                        // Clear localStorage after successful migration
+                        localStorage.removeItem('pipboy-photos');
+                        console.log('Migration complete');
+                    }
+                    
+                    // Load photos from IndexedDB
+                    photoArchive = await PhotoDB.getAll();
+                    photoArchiveReady = true;
+                    console.log('Loaded', photoArchive.length, 'photos from IndexedDB');
+                } else {
+                    // Fallback to localStorage
+                    photoArchive = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
+                    photoArchiveReady = true;
+                    console.log('Using localStorage for photos (IndexedDB not available)');
+                }
+            } catch (e) {
+                console.error('Error initializing photo storage:', e);
+                // Fallback to localStorage
+                photoArchive = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
+                photoArchiveReady = true;
+            }
+        }
+        
+        // Save photo archive (to IndexedDB or localStorage)
+        async function savePhotoArchive() {
+            try {
+                if (PhotoDB.db) {
+                    // Using IndexedDB - photos are already saved individually
+                    // Just update the in-memory array
+                    photoArchive = await PhotoDB.getAll();
+                } else {
+                    // Fallback to localStorage
+                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                }
+            } catch (e) {
+                console.error('Error saving photo archive:', e);
+                // Try localStorage as fallback
+                try {
+                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                } catch (e2) {
+                    console.error('localStorage also failed:', e2);
+                }
+            }
+        }
+
 
         // ================= v0.43 DUAL-CAPTURE ARCHIVE ENGINE =================
         // One capture -> TWO artifacts in the DATABANK as one paired entry {pip, raw}:
@@ -6406,7 +6617,15 @@
             photoArchive.unshift(entry);
             let pruned = 0;
             for (;;) {
-                try { localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive)); break; }
+                try {
+                    // v0.210: Save to IndexedDB (or localStorage fallback)
+                    if (typeof savePhotoArchive === 'function') {
+                        savePhotoArchive();
+                    } else {
+                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                    }
+                    break;
+                }
                 catch (e) {
                     if (photoArchive.length <= 1) {
                         photoArchive.shift();
@@ -6462,22 +6681,93 @@
 
         // v0.44 (user direction): per-image SHARE removed entirely, per-image EXPORT
         // replaced by one bulk control on the CAM databank bar.
-        function exportAllPhotos() {
+        // v0.213: Duplicate photo export mitigation
+        let lastPhotoExport = parseInt(localStorage.getItem('pipboy-last-photo-export') || '0');
+        let exportedPhotoHashes = JSON.parse(localStorage.getItem('pipboy-exported-hashes') || '[]');
+        
+        function getPhotoHash(photo) {
+            // Calculate simple hash of photo data for deduplication
+            if (typeof photo === 'string') {
+                // Data URL - use first 100 chars as hash
+                return photo.substring(0, 100);
+            } else if (photo && photo.pip) {
+                // Photo object - hash the PIP version
+                return photo.pip.substring(0, 100);
+            }
+            return null;
+        }
+        
+        function exportPhotosWithDedup(exportAll = false) {
             if (!photoArchive.length) return showNotification('DATABANK EMPTY.');
+            
+            const now = Date.now();
+            let photosToExport = exportAll 
+                ? photoArchive
+                : photoArchive.filter(p => {
+                    const timestamp = p.timestamp || p.ts || 0;
+                    return timestamp > lastPhotoExport;
+                });
+            
+            // Deduplicate by hash within this batch
+            const batchHashes = [];
+            const dedupedPhotos = [];
+            let duplicateCount = 0;
+            
+            photosToExport.forEach(photo => {
+                const hash = getPhotoHash(photo);
+                if (!hash) {
+                    dedupedPhotos.push(photo);
+                    return;
+                }
+                
+                if (exportedPhotoHashes.includes(hash) || batchHashes.includes(hash)) {
+                    duplicateCount++;
+                    return; // Skip duplicate
+                }
+                
+                batchHashes.push(hash);
+                dedupedPhotos.push(photo);
+            });
+            
+            if (dedupedPhotos.length === 0) {
+                showNotification('No new photos to export (all duplicates or already exported)');
+                return;
+            }
+            
+            // Build export jobs
             const jobs = [];
-            photoArchive.forEach((e, i) => {
+            dedupedPhotos.forEach((e, i) => {
                 jobs.push({ url: entryPip(e), name: `POXBOY_${i + 1}_PIP.jpg` });
                 const raw = entryRaw(e);
                 if (raw) jobs.push({ url: raw, name: `POXBOY_${i + 1}_RAW.jpg` });
             });
-            showCustomPrompt(`EXPORT ALL ${jobs.length} IMAGES (PIP + RAW VERSIONS) TO YOUR DOWNLOAD FOLDER? TAP "ALLOW" IF THE BROWSER ASKS ABOUT MULTIPLE DOWNLOADS.`, [
+            
+            const dupMsg = duplicateCount > 0 ? ` (${duplicateCount} duplicates skipped)` : '';
+            showCustomPrompt(`EXPORT ${jobs.length} IMAGES${dupMsg} TO YOUR DOWNLOAD FOLDER? TAP "ALLOW" IF THE BROWSER ASKS ABOUT MULTIPLE DOWNLOADS.`, [
                 {
-                    label: 'EXPORT ALL',
+                    label: 'EXPORT',
                     action: () => {
                         jobs.forEach((j, i) => setTimeout(() => downloadDataUrl(j.url, j.name), i * 350));
+                        
+                        // Update tracking
+                        localStorage.setItem('pipboy-last-photo-export', now.toString());
+                        exportedPhotoHashes.push(...batchHashes);
+                        localStorage.setItem('pipboy-exported-hashes', JSON.stringify(exportedPhotoHashes.slice(-1000)));
+                        
                         coachExportOnce();
                     }
                 },
+                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
+            ]);
+        }
+        
+        function exportAllPhotos() {
+            if (!photoArchive.length) return showNotification('DATABANK EMPTY.');
+            
+            // v0.213: Show export dialog with options
+            showCustomPrompt('EXPORT PHOTOS', [
+                { label: 'EXPORT ALL (' + photoArchive.length + ' photos)', action: () => exportPhotosWithDedup(true) },
+                { label: 'EXPORT NEW ONLY', action: () => exportPhotosWithDedup(false) },
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
         }
@@ -6643,7 +6933,12 @@
                     color: "#ff3333",
                     action: () => {
                         photoArchive.splice(idx, 1);
-                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                        // v0.210: Save to IndexedDB (or localStorage fallback)
+                        if (typeof savePhotoArchive === 'function') {
+                            savePhotoArchive();
+                        } else {
+                            localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                        }
                         closePhotoViewer();
                         renderPhotoGallery();
                     }
@@ -6667,7 +6962,12 @@
                     color: "#ff3333",
                     action: () => {
                         photoArchive.splice(idx, 1);
-                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                        // v0.210: Save to IndexedDB (or localStorage fallback)
+                        if (typeof savePhotoArchive === 'function') {
+                            savePhotoArchive();
+                        } else {
+                            localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                        }
                         renderPhotoGallery(); // refresh gallery
                     }
                 },
@@ -8970,7 +9270,17 @@
         function saveMailPhoto(dataUrl) {
             if (!dataUrl || typeof dataUrl !== 'string') return;
             photoArchive.unshift(dataUrl); // string entries are first-class (entryPip handles both)
-            try { localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive)); }
+            // v0.210: Save to IndexedDB (or localStorage fallback)
+            try {
+                if (typeof savePhotoArchive === 'function') {
+                    savePhotoArchive();
+                } else {
+                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                }
+            } catch (e) {
+                console.error('Error saving mail photo:', e);
+            }
+        }
             catch (e) { showNotification('DATABANK FULL -- PHOTO COULD NOT BE FILED.'); return; }
             const camTab = document.getElementById('tab-cam');
             if (camTab && camTab.classList.contains('active')) renderPhotoGallery();
@@ -10063,6 +10373,16 @@
             // Don't let archive errors prevent app from loading
         }
 
+        // v0.210: Initialize IndexedDB photo storage (much higher limits than localStorage)
+        try {
+            if (typeof initPhotoStorage === 'function') {
+                initPhotoStorage();
+            }
+        } catch (e) {
+            console.error('Error initializing photo storage:', e);
+            // Don't let photo storage errors prevent app from loading
+        }
+
         // ==================== PWA INSTALL PIPELINE (v0.32) ====================
         // Root cause of "install did nothing on Chrome": the WebAPK minting pipeline is
         // silent and slow (up to a minute), AND our manifest under-declared icons
@@ -10676,12 +10996,15 @@
             }
         }
 
-        // ==================== AUTO-ARCHIVE SYSTEM (v0.201) ====================
+        // ==================== AUTO-ARCHIVE SYSTEM (v0.211) ====================
         // Archives old data to JSON downloads instead of deleting
         const ARCHIVE_AGE_DAYS = 30;
         const ARCHIVE_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+        const ARCHIVE_MANUAL_COOLDOWN = 60 * 60 * 1000; // 1 hour for manual archives
         const STORAGE_EMERGENCY_THRESHOLD = 0.90; // 90% capacity
-        let lastArchiveCheck = 0;
+        let lastArchiveCheck = parseInt(localStorage.getItem('pipboy-last-archive-check') || '0');
+        let lastManualArchive = parseInt(localStorage.getItem('pipboy-last-manual-archive') || '0');
+        let lastArchiveThreshold = parseInt(localStorage.getItem('pipboy-last-archive-threshold') || '0');
         
         function checkAndArchiveOldData(manual = false, customAgeDays = null) {
             try {
@@ -10689,42 +11012,59 @@
                 const archiveAgeDays = customAgeDays !== null ? customAgeDays : ARCHIVE_AGE_DAYS;
                 const archiveThreshold = now - (archiveAgeDays * 24 * 60 * 60 * 1000);
                 
-                // Only run once per 24 hours unless manual
+                // v0.211: Prevent duplicate downloads
+                // For automatic archives: only run once per 24 hours
                 if (!manual && (now - lastArchiveCheck) < ARCHIVE_CHECK_INTERVAL) {
+                    console.log('Auto-archive: Skipped (within 24h interval)');
                     return;
                 }
                 
-                console.log('Checking for old data to archive (threshold: ' + archiveAgeDays + ' days)...');
+                // v0.211: For manual archives: cooldown of 1 hour
+                if (manual && (now - lastManualArchive) < ARCHIVE_MANUAL_COOLDOWN) {
+                    const minutesAgo = Math.floor((now - lastManualArchive) / 60000);
+                    if (typeof showNotification === 'function') {
+                        showNotification('ARCHIVE COOLDOWN: Please wait ' + (60 - minutesAgo) + ' minutes before archiving again');
+                    }
+                    console.log('Manual archive: Skipped (within 1h cooldown, ' + minutesAgo + ' minutes ago)');
+                    return;
+                }
+                
+                // v0.211: Only archive data older than the last archive threshold
+                // This prevents re-archiving data that was already archived
+                const effectiveThreshold = Math.min(archiveThreshold, lastArchiveThreshold > 0 ? lastArchiveThreshold : archiveThreshold);
+                
+                console.log('Checking for old data to archive (threshold: ' + archiveAgeDays + ' days, effective: ' + new Date(effectiveThreshold).toISOString() + ')...');
                 
                 const archiveData = {
                     archiveDate: new Date(now).toISOString(),
-                    version: 'v0.201',
-                    data: {}
+                    version: 'v0.211',
+                    data: {},
+                    threshold: archiveAgeDays
                 };
                 
                 let hasDataToArchive = false;
                 
-                // Archive old mail log entries (safely check if mailLog exists)
+                // Archive old mail log entries (only if older than effective threshold)
                 if (typeof mailLog !== 'undefined' && Array.isArray(mailLog) && mailLog.length > 0) {
-                    const oldMails = mailLog.filter(m => m && m.ts && m.ts < archiveThreshold);
+                    const oldMails = mailLog.filter(m => m && m.ts && m.ts < effectiveThreshold);
                     if (oldMails.length > 0) {
                         archiveData.data.mailLog = oldMails;
-                        mailLog = mailLog.filter(m => !m || !m.ts || m.ts >= archiveThreshold);
+                        mailLog = mailLog.filter(m => !m || !m.ts || m.ts >= effectiveThreshold);
                         hasDataToArchive = true;
                     }
                 }
                 
-                // Archive old outbox entries (sent mails)
+                // Archive old outbox entries (sent mails, only if older than effective threshold)
                 if (typeof outbox !== 'undefined' && Array.isArray(outbox) && outbox.length > 0) {
-                    const oldOutbox = outbox.filter(o => o && o.ts && o.ts < archiveThreshold && o.status === 'sent');
+                    const oldOutbox = outbox.filter(o => o && o.ts && o.ts < effectiveThreshold && o.status === 'sent');
                     if (oldOutbox.length > 0) {
                         archiveData.data.outbox = oldOutbox;
-                        outbox = outbox.filter(o => !o || !o.ts || o.ts >= archiveThreshold || o.status !== 'sent');
+                        outbox = outbox.filter(o => !o || !o.ts || o.ts >= effectiveThreshold || o.status !== 'sent');
                         hasDataToArchive = true;
                     }
                 }
                 
-                // Archive old mail-seen IDs (keep last 500)
+                // Archive old mail-seen IDs (keep last 500, only if we have more)
                 if (typeof mailSeen !== 'undefined' && Array.isArray(mailSeen) && mailSeen.length > 500) {
                     const oldSeen = mailSeen.slice(0, -500);
                     archiveData.data.mailSeen = oldSeen;
@@ -10751,22 +11091,35 @@
                         saveComms();
                     }
                     
+                    // v0.211: Update archive tracking
+                    lastArchiveCheck = now;
+                    if (manual) {
+                        lastManualArchive = now;
+                        localStorage.setItem('pipboy-last-manual-archive', now.toString());
+                    }
+                    lastArchiveThreshold = archiveThreshold;
+                    localStorage.setItem('pipboy-last-archive-check', now.toString());
+                    localStorage.setItem('pipboy-last-archive-threshold', archiveThreshold.toString());
+                    
                     const itemCount = Object.values(archiveData.data).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
                     if (typeof showNotification === 'function') {
                         showNotification(`📦 Archived ${itemCount} old items to ${a.download}`);
                     }
-                } else if (manual) {
-                    if (typeof showNotification === 'function') {
-                        showNotification('No old data to archive (data is newer than ' + archiveAgeDays + ' days)');
+                    console.log('Archive complete:', itemCount, 'items archived');
+                } else {
+                    // v0.211: No data to archive
+                    if (manual && typeof showNotification === 'function') {
+                        showNotification('No old data to archive (all data is newer than ' + archiveAgeDays + ' days or already archived)');
                     }
-                }
-                
-                // Update last check time
-                lastArchiveCheck = now;
-                try {
+                    console.log('No data to archive');
+                    
+                    // Still update the check time to prevent repeated checks
+                    lastArchiveCheck = now;
+                    if (manual) {
+                        lastManualArchive = now;
+                        localStorage.setItem('pipboy-last-manual-archive', now.toString());
+                    }
                     localStorage.setItem('pipboy-last-archive-check', now.toString());
-                } catch (e) {
-                    console.warn('Could not save last archive check time:', e);
                 }
             } catch (e) {
                 console.error('Error in checkAndArchiveOldData:', e);
