@@ -9278,10 +9278,9 @@
                     localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
                 }
             } catch (e) {
-                console.error('Error saving mail photo:', e);
+                showNotification('DATABANK FULL -- PHOTO COULD NOT BE FILED.');
+                return;
             }
-        }
-            catch (e) { showNotification('DATABANK FULL -- PHOTO COULD NOT BE FILED.'); return; }
             const camTab = document.getElementById('tab-cam');
             if (camTab && camTab.classList.contains('active')) renderPhotoGallery();
             showNotification('PHOTO FILED TO DATABANK.');
