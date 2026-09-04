@@ -3103,17 +3103,32 @@
 
         // v0.160: Complete a multi-stage stage and advance to next
         function completeMultiStageStage(questId, stageIdx, evidence) {
+            console.log(`[Multi-Stage] Completing stage ${stageIdx + 1} for quest ${questId}`);
+            
             const myUid = myMailUid;
-            if (!myUid) return;
+            if (!myUid) {
+                console.error('[Multi-Stage] No user ID available');
+                showNotification('ERROR: No user ID');
+                return;
+            }
             
             const q = firebaseQuests[questId];
-            if (!q) return;
+            if (!q) {
+                console.error('[Multi-Stage] Quest not found:', questId);
+                showNotification('ERROR: Quest not found');
+                return;
+            }
             
             const stages = q.stages || [];
             const stage = stages[stageIdx];
-            if (!stage) return;
+            if (!stage) {
+                console.error('[Multi-Stage] Stage not found:', stageIdx);
+                showNotification('ERROR: Stage not found');
+                return;
+            }
             
-            // Mark current stage as completed
+            // Build update object
+            const updates = {};
             const stageUpdate = {
                 status: 'completed',
                 completedAt: Date.now()
@@ -3124,31 +3139,53 @@
                 if (evidence.scan) stageUpdate.evidenceScan = evidence.scan;
             }
             
-            const updates = {};
             updates[`stages/${stage.id}`] = stageUpdate;
+            console.log('[Multi-Stage] Stage update:', JSON.stringify(updates));
             
-            // Unlock next stage if exists
-            if (stageIdx + 1 < stages.length) {
-                const nextStage = stages[stageIdx + 1];
-                updates[`stages/${nextStage.id}/status`] = 'available';
-            } else {
-                // All stages complete - mark quest as completed
+            // Check if all stages completed
+            const allStagesCompleted = stages.every((s, idx) => {
+                if (idx === stageIdx) return true; // Current stage being completed
+                const userStage = q.progress?.[myUid]?.stages?.[s.id];
+                return userStage?.status === 'completed';
+            });
+            
+            if (allStagesCompleted) {
                 updates.status = 'completed';
                 updates.completedAt = Date.now();
-                updates.completedByName = userProfile.name || 'UNKNOWN'; // v0.163: Add name for issuer
+                updates.completedByName = userProfile.name || 'UNKNOWN';
+                console.log('[Multi-Stage] All stages completed, marking quest as completed');
+            } else {
+                // Unlock next stage
+                const nextStageIdx = stageIdx + 1;
+                if (nextStageIdx < stages.length) {
+                    const nextStage = stages[nextStageIdx];
+                    updates[`stages/${nextStage.id}/status`] = 'available';
+                    console.log(`[Multi-Stage] Unlocking stage ${nextStageIdx + 1}`);
+                }
             }
             
             const progRef = window.firebaseRef(window.db, `quests/${questId}/progress/${myUid}`);
+            console.log('[Multi-Stage] Updating Firebase path:', `quests/${questId}/progress/${myUid}`);
+            
             window.firebaseUpdate(progRef, updates)
                 .then(() => {
+                    console.log('[Multi-Stage] Firebase update successful');
                     playSound('level-up');
                     
-                    if (stageIdx + 1 < stages.length) {
-                        const nextStage = stages[stageIdx + 1];
-                        showNotification(`✓ STAGE ${stageIdx + 1} COMPLETED!\n\nNext: ${nextStage.title}`);
-                        setTimeout(() => openMultiStageQuestModal(questId), 500);
+                    if (allStagesCompleted) {
+                        showQuestStatusModal('completed', q.title || 'UNKNOWN');
+                        sendMultiStageVerificationRequest(questId);
                     } else {
-                        showNotification('✓ ALL STAGES COMPLETED!\n\nQuest submitted for verification');
+                        showNotification(`STAGE ${stageIdx + 1} COMPLETED - STAGE ${stageIdx + 2} UNLOCKED`);
+                        // Re-open modal to show next stage
+                        setTimeout(() => openMultiStageQuestModal(questId), 500);
+                    }
+                })
+                .catch(err => {
+                    console.error('[Multi-Stage] Firebase update failed:', err);
+                    showNotification('ERROR COMPLETING STAGE: ' + err.message);
+                });
+        }
                         sendMultiStageVerificationRequest(questId);
                         setTimeout(() => {
                             switchQuestTab('active');
@@ -3284,38 +3321,61 @@
         }
 
         function abandonQuest(id) {
+            const q = firebaseQuests[id];
+            const questTitle = q?.title || 'UNKNOWN QUEST';
+            
+            console.log(`[Abandon] Preparing to abandon quest ${id}: ${questTitle}`);
+            
             showCustomPrompt('ABANDON THIS QUEST?\n\nThis will remove it from your active quests.', [
                 { label: 'ABANDON QUEST', color: '#ff3333', action: () => {
-                    const myUid = myMailUid; // Use myMailUid instead of localStorage
+                    const myUid = myMailUid;
+                    if (!myUid) {
+                        console.error('[Abandon] No user ID available');
+                        showNotification('ERROR: No user ID');
+                        return;
+                    }
+                    
                     const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
-                    // v0.167: Use firebaseUpdate to only update status fields (keeps existing data)
+                    console.log('[Abandon] Updating Firebase path:', `quests/${id}/progress/${myUid}`);
+                    
                     window.firebaseUpdate(progRef, {
                         status: 'abandoned',
                         abandonedAt: Date.now()
                     })
                         .then(() => {
+                            console.log('[Abandon] Firebase update successful');
                             closeCustomPrompt();
-                            // v0.201: Show quest status modal with sound
-                            const q = firebaseQuests[id];
-                            if (typeof showQuestStatusModal === 'function') {
-                                showQuestStatusModal('abandoned', q?.title || 'UNKNOWN');
-                            } else {
+                            
+                            // Always try to show modal, with fallback to notification
+                            try {
+                                if (typeof showQuestStatusModal === 'function') {
+                                    console.log('[Abandon] Showing abandonment modal');
+                                    showQuestStatusModal('abandoned', questTitle);
+                                } else {
+                                    throw new Error('showQuestStatusModal not available');
+                                }
+                            } catch (e) {
+                                console.error('[Abandon] Modal failed, using fallback:', e);
                                 showNotification('QUEST ABANDONED');
-                                playSound('johnnyGuitar');
+                                if (typeof playSound === 'function') {
+                                    playSound('johnnyGuitar');
+                                }
                             }
-                            // v0.165: Switch to completed tab immediately (abandoned quests go there)
+                            
+                            // Switch to completed tab
                             setTimeout(() => {
                                 switchQuestTab('completed');
                                 renderCompletedQuests();
                             }, 500);
                         })
                         .catch(err => {
-                            console.error('Abandon quest error:', err);
-                            showNotification('ERROR: ' + err.message);
+                            console.error('[Abandon] Firebase update failed:', err);
+                            showNotification('ERROR ABANDONING QUEST: ' + err.message);
                         });
                 }},
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
+        }
         }
 
         function completeQuest(id) {
@@ -3739,15 +3799,53 @@
                 try {
                     // v0.205: Make a deep copy of old quests to properly detect changes
                     const oldQuests = JSON.parse(JSON.stringify(firebaseQuests || {}));
-                    firebaseQuests = snap.val() || {};
+                    const newQuests = snap.val() || {};
+                    
+                    console.log('[Quests Listener] Received update, quest count:', Object.keys(newQuests).length);
+                    
+                    // v0.214: Validate state changes to detect suspicious resets
+                    const myUid = myMailUid;
+                    if (myUid && !questsListenerFirstLoad) {
+                        Object.keys(newQuests).forEach(id => {
+                            try {
+                                const oldProg = oldQuests[id]?.progress?.[myUid];
+                                const newProg = newQuests[id]?.progress?.[myUid];
+                                
+                                if (oldProg && newProg) {
+                                    // Check for suspicious state resets
+                                    if (oldProg.status === 'abandoned' && newProg.status !== 'abandoned') {
+                                        console.warn(`[Quests Listener] ⚠️ Suspicious state reset for quest ${id}: abandoned -> ${newProg.status}`);
+                                    }
+                                    
+                                    if (oldProg.status === 'completed' && newProg.status === 'accepted') {
+                                        console.warn(`[Quests Listener] ⚠️ Suspicious state reset for quest ${id}: completed -> accepted`);
+                                    }
+                                    
+                                    // Check for stage state resets
+                                    if (oldProg.stages && newProg.stages) {
+                                        Object.keys(oldProg.stages).forEach(stageId => {
+                                            const oldStage = oldProg.stages[stageId];
+                                            const newStage = newProg.stages[stageId];
+                                            if (oldStage?.status === 'completed' && newStage?.status !== 'completed') {
+                                                console.warn(`[Quests Listener] ⚠️ Suspicious stage reset for quest ${id}, stage ${stageId}: completed -> ${newStage?.status}`);
+                                            }
+                                        });
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('[Quests Listener] Error validating quest', id, ':', e);
+                            }
+                        });
+                    }
+                    
+                    firebaseQuests = newQuests;
                     
                     // v0.208: Skip verification check on first load (prevents showing modal for already-verified quests)
                     if (questsListenerFirstLoad) {
                         questsListenerFirstLoad = false;
-                        console.log('Quests listener: First load, skipping verification checks');
+                        console.log('[Quests Listener] First load, skipping verification checks');
                     } else {
                         // v0.201: Check for newly verified quests (user's own quests)
-                        const myUid = myMailUid;
                         if (myUid && typeof showQuestStatusModal === 'function') {
                             Object.keys(firebaseQuests).forEach(id => {
                                 try {
@@ -3761,11 +3859,12 @@
                                         // Detect status change to 'verified'
                                         if (oldStatus !== 'verified' && newStatus === 'verified') {
                                             // Quest was just verified - show modal
+                                            console.log('[Quests Listener] Quest verified:', id);
                                             showQuestStatusModal('verified', q.title || 'UNKNOWN', 'Verified by: ' + (prog.verifiedByName || 'UNKNOWN'));
                                         }
                                     }
                                 } catch (e) {
-                                    console.error('Error checking quest verification for quest', id, ':', e);
+                                    console.error('[Quests Listener] Error checking quest verification for quest', id, ':', e);
                                 }
                             });
                         }
@@ -3775,6 +3874,14 @@
                     if (activeTab) {
                         const tabText = activeTab.textContent.trim();
                         if (tabText === 'ACTIVE') renderActiveQuests();
+                        else if (tabText === 'AVAILABLE') renderAvailableQuests();
+                        else if (tabText === 'ISSUED') renderIssuedQuests();
+                    }
+                } catch (e) {
+                    console.error('[Quests Listener] Error:', e);
+                }
+            }, () => {});
+        }
                         else if (tabText === 'AVAILABLE') renderAvailableQuests();
                         else if (tabText === 'ISSUED') renderIssuedQuests();
                     }
