@@ -3186,15 +3186,6 @@
                     showNotification('ERROR COMPLETING STAGE: ' + err.message);
                 });
         }
-                        sendMultiStageVerificationRequest(questId);
-                        setTimeout(() => {
-                            switchQuestTab('active');
-                            renderActiveQuests();
-                        }, 500);
-                    }
-                })
-                .catch(err => showNotification('ERROR COMPLETING STAGE: ' + err.message));
-        }
 
         // v0.160: Send verification request to issuer when multi-stage quest is complete
         function sendMultiStageVerificationRequest(questId) {
@@ -3375,7 +3366,6 @@
                 }},
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
-        }
         }
 
         function completeQuest(id) {
@@ -3879,14 +3869,6 @@
                     }
                 } catch (e) {
                     console.error('[Quests Listener] Error:', e);
-                }
-            }, () => {});
-        }
-                        else if (tabText === 'AVAILABLE') renderAvailableQuests();
-                        else if (tabText === 'ISSUED') renderIssuedQuests();
-                    }
-                } catch (e) {
-                    console.error('Error in quests listener:', e);
                 }
             }, () => {});
         }
