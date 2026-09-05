@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.215</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.216</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -124,7 +124,7 @@
                 </div>
                 
                 <!-- v0.84: RADIATION LEVEL row removed — already shown in HP/RADS bar + footer -->
-                <!-- v0.215: ACTION POINTS row removed — never implemented, dead code -->
+                <!-- v0.216: ACTION POINTS row removed — never implemented, dead code -->
             </div>
 
             <!-- SPECIAL (v0.84: merged with SKILLS + PERKS — one scrollable page) -->
@@ -266,7 +266,7 @@
 
             <!-- APP OPTIONS moved to STAT > OPTIONS (v0.84) -->
 
-            <!-- QUESTS (v0.215: unified quest system) -->
+            <!-- QUESTS (v0.216: unified quest system) -->
             <div id="sub-data-quests" class="sub-tab-content active">
                 <button class="theme-btn" onclick="openCreateQuestModal()" style="width:100%; border-style:dashed; margin-bottom:15px;">[+ CREATE QUEST]</button>
                 <div class="sub-nav" id="quest-sub-nav" style="flex-wrap: wrap; column-gap: 15px; row-gap: 6px; margin-bottom: 15px;">
@@ -311,7 +311,7 @@
 
         <!-- ================= MAP TAB ================= -->
         <div id="tab-map" class="tab-content">
-            <!-- v0.215: Controls above map in portrait, side-by-side in landscape -->
+            <!-- v0.216: Controls above map in portrait, side-by-side in landscape -->
             <div class="split-view">
                 <div class="split-controls split-controls-top">
                     <h2 class="landscape-only">MAP TOOLS</h2>
@@ -347,7 +347,7 @@
                         </div>
                     </div>
                 </div>
-                <!-- v0.215: Wastelanders lists inside split-view, right below map -->
+                <!-- v0.216: Wastelanders lists inside split-view, right below map -->
                 <div class="split-wastelanders">
                     <div id="wastelanders-list-map" style="margin-top: 0; max-height: 200px; overflow-y: auto; padding-top: 0;">
                         <h3 style="font-size: 1rem; margin-top: 0; margin-bottom: 5px;">LIVE WASTELANDERS</h3>
@@ -459,7 +459,7 @@
             <div id="radio-overseer" style="display: none;"></div>
             <button class="pip-btn" id="radio-sync-btn" onclick="radioSyncToggle()" style="width: 100%; border-style: dashed; margin-top: 10px;">[ STATION SYNC: ON ]</button>
             
-            <!-- v0.215: Sync indicator and manual adjustment -->
+            <!-- v0.216: Sync indicator and manual adjustment -->
             <div id="radio-sync-controls" style="display: none; margin-top: 10px; text-align: center;">
                 <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
                     <button class="pip-btn" onclick="radioSyncAdjust(-0.1)" style="padding: 4px 12px; font-size: 0.9rem; width: auto;">[-0.1s]</button>
@@ -559,7 +559,7 @@
         </div>
     </div>
 
-    <!-- UNIFIED QUEST CREATION MODAL (v0.215) -->
+    <!-- UNIFIED QUEST CREATION MODAL (v0.216) -->
     <div id="create-quest-modal" class="modal-overlay" style="z-index: 125;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3 id="cq-modal-title">CREATE QUEST</h3>
@@ -577,6 +577,31 @@
                 <input type="hidden" id="new-quest-target" value="">
             </div>
             <button class="pip-btn" id="submit-quest-btn" onclick="submitQuestFromModal()">CREATE QUEST</button>
+            <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- EDIT QUEST MODAL (v0.216) -->
+    <div id="edit-quest-modal" class="modal-overlay" style="z-index: 125;">
+        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
+            <h3 id="eq-modal-title">EDIT QUEST</h3>
+            <div class="form-group">
+                <label>TITLE</label>
+                <input type="text" id="edit-quest-title" class="pip-input vk-target" readonly onclick="openVk('edit-quest-title')" maxlength="100" placeholder="Quest title...">
+            </div>
+            <div class="form-group">
+                <label>DESCRIPTION</label>
+                <textarea id="edit-quest-desc" class="pip-input vk-target grow" readonly onclick="openVk('edit-quest-desc')" maxlength="500" rows="4" placeholder="Quest details..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>REWARD (optional)</label>
+                <input type="text" id="edit-quest-reward" class="pip-input vk-target" readonly onclick="openVk('edit-quest-reward')" maxlength="100" placeholder="e.g., 50 caps, a drink...">
+            </div>
+            <div id="edit-quest-stages-container" style="display:none; margin-top: 20px; border-top: 2px solid var(--pip-color-dim); padding-top: 15px;">
+                <h4 style="margin-top: 0; color: var(--pip-color);">STAGES</h4>
+                <div id="edit-quest-stages-list"></div>
+            </div>
+            <button class="pip-btn" id="save-quest-edits-btn" onclick="saveQuestEditsFromModal()" style="margin-top: 15px;">SAVE CHANGES</button>
             <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
         </div>
     </div>
@@ -672,7 +697,7 @@
         </div>
     </div>
 
-    <!-- QUICK CAMERA OVERLAY MODAL (v0.215) -->
+    <!-- QUICK CAMERA OVERLAY MODAL (v0.216) -->
     <div id="quick-cam-modal" class="modal-overlay" style="z-index: 1001; background: var(--pip-bg);">
         <div class="modal-content" style="width: 100%; height: 100vh; max-width: 100%; border: none; padding: 20px; display: flex; flex-direction: column; position: relative;">
             <h3 style="text-align: center; margin-bottom: 20px; flex-shrink: 0; z-index: 10;">📷 SNAP EVIDENCE PHOTO</h3>
@@ -1039,7 +1064,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.215</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.216</span>
             <button class="pip-btn" onclick="devSkipToApp()" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1070,7 +1095,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.215</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.216</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
@@ -1115,7 +1140,7 @@
     <script src="app.js"></script>
 </body>
 </html>
-    <!-- OVERSEER DISPLAY OVERLAY (v0.215) -->
+    <!-- OVERSEER DISPLAY OVERLAY (v0.216) -->
     <div id="overseer-display-modal" class="modal-overlay" style="z-index: 2000; background: var(--pip-bg); display: none;">
         <div style="width: 100%; height: 100vh; display: flex; flex-direction: column; padding: 10px;">
             <!-- Header -->

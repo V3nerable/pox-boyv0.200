@@ -3287,6 +3287,9 @@
         }
 
         // v0.215: Edit quest details (overseer only)
+        let editingQuestId = null;
+        let editingQuestData = null;
+        
         function editQuest(id) {
             const q = firebaseQuests[id];
             if (!q) return;
@@ -3297,47 +3300,43 @@
                 return;
             }
             
-            // Build edit form
-            let formHtml = `<div style="max-height: 70vh; overflow-y: auto;">
-                <h3 style="margin-top: 0;">EDIT QUEST</h3>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">TITLE:</label>
-                    <input type="text" id="edit-quest-title" value="${escapeHtml(q.title || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">DESCRIPTION:</label>
-                    <textarea id="edit-quest-desc" rows="4" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">${escapeHtml(q.description || '')}</textarea>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">REWARD:</label>
-                    <input type="text" id="edit-quest-reward" value="${escapeHtml(q.reward || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
-                </div>`;
+            // Store quest data for saving later
+            editingQuestId = id;
+            editingQuestData = q;
             
-            // Add stage editing for multi-stage quests
+            // Populate the edit modal fields
+            document.getElementById('edit-quest-title').value = q.title || '';
+            document.getElementById('edit-quest-desc').value = q.description || '';
+            document.getElementById('edit-quest-reward').value = q.reward || '';
+            
+            // Handle multi-stage quests
+            const stagesContainer = document.getElementById('edit-quest-stages-container');
+            const stagesList = document.getElementById('edit-quest-stages-list');
+            
             if (q.type === 'multi-stage' && q.stages) {
-                formHtml += `<div style="margin-top: 20px; border-top: 2px solid var(--pip-color-dim); padding-top: 15px;">
-                    <h4 style="margin-top: 0;">STAGES</h4>`;
+                stagesContainer.style.display = 'block';
+                let stagesHtml = '';
                 
                 const stages = q.stages || [];
                 stages.forEach((stage, idx) => {
                     const stageStatus = stage.status || 'locked';
-                    formHtml += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid var(--pip-color-dim); background: rgba(0,0,0,0.2);">
+                    stagesHtml += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid var(--pip-color-dim); background: rgba(0,0,0,0.2);">
                         <h5 style="margin-top: 0; color: var(--pip-color);">STAGE ${idx + 1}</h5>
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">TITLE:</label>
-                            <input type="text" id="edit-stage-${idx}-title" value="${escapeHtml(stage.title || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>TITLE</label>
+                            <input type="text" id="edit-stage-${idx}-title" class="pip-input vk-target" readonly onclick="openVk('edit-stage-${idx}-title')" maxlength="100" value="${escapeHtml(stage.title || '')}">
                         </div>
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">DESCRIPTION:</label>
-                            <textarea id="edit-stage-${idx}-desc" rows="3" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">${escapeHtml(stage.description || '')}</textarea>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>DESCRIPTION</label>
+                            <textarea id="edit-stage-${idx}-desc" class="pip-input vk-target grow" readonly onclick="openVk('edit-stage-${idx}-desc')" rows="3">${escapeHtml(stage.description || '')}</textarea>
                         </div>
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">REWARD:</label>
-                            <input type="text" id="edit-stage-${idx}-reward" value="${escapeHtml(stage.reward || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>REWARD</label>
+                            <input type="text" id="edit-stage-${idx}-reward" class="pip-input vk-target" readonly onclick="openVk('edit-stage-${idx}-reward')" maxlength="100" value="${escapeHtml(stage.reward || '')}">
                         </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">STATUS:</label>
-                            <select id="edit-stage-${idx}-status" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                        <div class="form-group">
+                            <label>STATUS</label>
+                            <select id="edit-stage-${idx}-status" class="pip-input" style="width: 100%;">
                                 <option value="locked" ${stageStatus === 'locked' ? 'selected' : ''}>LOCKED</option>
                                 <option value="available" ${stageStatus === 'available' ? 'selected' : ''}>AVAILABLE</option>
                                 <option value="completed" ${stageStatus === 'completed' ? 'selected' : ''}>COMPLETED</option>
@@ -3346,23 +3345,26 @@
                     </div>`;
                 });
                 
-                formHtml += `</div>`;
+                stagesList.innerHTML = stagesHtml;
+            } else {
+                stagesContainer.style.display = 'none';
+                stagesList.innerHTML = '';
             }
             
-            formHtml += `</div>`;
-            
-            // Show edit modal
-            showCustomPrompt(formHtml, [
-                { label: 'SAVE CHANGES', color: '#39ff14', action: () => saveQuestEdits(id, q) },
-                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
+            // Show the modal
+            document.getElementById('edit-quest-modal').style.display = 'flex';
         }
         
-        // v0.215: Save quest edits to Firebase
-        function saveQuestEdits(id, originalQuest) {
-            const title = document.getElementById('edit-quest-title')?.value || originalQuest.title;
-            const description = document.getElementById('edit-quest-desc')?.value || originalQuest.description;
-            const reward = document.getElementById('edit-quest-reward')?.value || originalQuest.reward;
+        // v0.215: Save quest edits from modal to Firebase
+        function saveQuestEditsFromModal() {
+            if (!editingQuestId || !editingQuestData) {
+                showNotification('ERROR: No quest data to save');
+                return;
+            }
+            
+            const title = document.getElementById('edit-quest-title')?.value || editingQuestData.title;
+            const description = document.getElementById('edit-quest-desc')?.value || editingQuestData.description;
+            const reward = document.getElementById('edit-quest-reward')?.value || editingQuestData.reward;
             
             const updates = {
                 title: title,
@@ -3371,8 +3373,8 @@
             };
             
             // Update stages for multi-stage quests
-            if (originalQuest.type === 'multi-stage' && originalQuest.stages) {
-                const stages = originalQuest.stages || [];
+            if (editingQuestData.type === 'multi-stage' && editingQuestData.stages) {
+                const stages = editingQuestData.stages || [];
                 updates.stages = {};
                 
                 stages.forEach((stage, idx) => {
@@ -3391,11 +3393,17 @@
                 });
             }
             
-            const questRef = window.firebaseRef(window.db, `quests/${id}`);
+            const questRef = window.firebaseRef(window.db, `quests/${editingQuestId}`);
+            console.log('[Edit Quest] Saving updates to Firebase:', updates);
+            
             window.firebaseUpdate(questRef, updates)
                 .then(() => {
-                    closeCustomPrompt();
+                    console.log('[Edit Quest] Firebase update successful');
+                    closeModals();
                     showNotification('QUEST UPDATED SUCCESSFULLY');
+                    // Clear editing state
+                    editingQuestId = null;
+                    editingQuestData = null;
                     // Refresh the issued quests view
                     setTimeout(() => renderIssuedQuests(), 500);
                 })
