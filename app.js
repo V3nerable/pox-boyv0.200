@@ -3232,6 +3232,8 @@
             // v0.107: Allow overseer to remove any quest
             if (isDev && q.status !== 'removed') {
                 buttons.push({ label: 'REMOVE QUEST (OVERSEER)', color: '#ff6600', action: () => removeQuest(id) });
+                // v0.215: Allow overseer to edit quest details
+                buttons.push({ label: 'EDIT QUEST (OVERSEER)', color: '#42b6ff', action: () => editQuest(id) });
             }
             buttons.push({ label: 'CLOSE', action: () => {} });
             const pendingVerifications = [];
@@ -3282,6 +3284,125 @@
                 });
             }
             showCustomPrompt(text, buttons);
+        }
+
+        // v0.215: Edit quest details (overseer only)
+        function editQuest(id) {
+            const q = firebaseQuests[id];
+            if (!q) return;
+            
+            const isDev = localStorage.getItem('pipboy-dev-mode') === 'true';
+            if (!isDev) {
+                showNotification('ONLY OVERSEERS CAN EDIT QUESTS');
+                return;
+            }
+            
+            // Build edit form
+            let formHtml = `<div style="max-height: 70vh; overflow-y: auto;">
+                <h3 style="margin-top: 0;">EDIT QUEST</h3>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">TITLE:</label>
+                    <input type="text" id="edit-quest-title" value="${escapeHtml(q.title || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">DESCRIPTION:</label>
+                    <textarea id="edit-quest-desc" rows="4" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">${escapeHtml(q.description || '')}</textarea>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">REWARD:</label>
+                    <input type="text" id="edit-quest-reward" value="${escapeHtml(q.reward || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                </div>`;
+            
+            // Add stage editing for multi-stage quests
+            if (q.type === 'multi-stage' && q.stages) {
+                formHtml += `<div style="margin-top: 20px; border-top: 2px solid var(--pip-color-dim); padding-top: 15px;">
+                    <h4 style="margin-top: 0;">STAGES</h4>`;
+                
+                const stages = q.stages || [];
+                stages.forEach((stage, idx) => {
+                    const stageStatus = stage.status || 'locked';
+                    formHtml += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid var(--pip-color-dim); background: rgba(0,0,0,0.2);">
+                        <h5 style="margin-top: 0; color: var(--pip-color);">STAGE ${idx + 1}</h5>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">TITLE:</label>
+                            <input type="text" id="edit-stage-${idx}-title" value="${escapeHtml(stage.title || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">DESCRIPTION:</label>
+                            <textarea id="edit-stage-${idx}-desc" rows="3" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">${escapeHtml(stage.description || '')}</textarea>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">REWARD:</label>
+                            <input type="text" id="edit-stage-${idx}-reward" value="${escapeHtml(stage.reward || '')}" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">STATUS:</label>
+                            <select id="edit-stage-${idx}-status" style="width: 100%; padding: 8px; background: var(--pip-bg); color: var(--pip-color); border: 1px solid var(--pip-color-dim);">
+                                <option value="locked" ${stageStatus === 'locked' ? 'selected' : ''}>LOCKED</option>
+                                <option value="available" ${stageStatus === 'available' ? 'selected' : ''}>AVAILABLE</option>
+                                <option value="completed" ${stageStatus === 'completed' ? 'selected' : ''}>COMPLETED</option>
+                            </select>
+                        </div>
+                    </div>`;
+                });
+                
+                formHtml += `</div>`;
+            }
+            
+            formHtml += `</div>`;
+            
+            // Show edit modal
+            showCustomPrompt(formHtml, [
+                { label: 'SAVE CHANGES', color: '#39ff14', action: () => saveQuestEdits(id, q) },
+                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
+            ]);
+        }
+        
+        // v0.215: Save quest edits to Firebase
+        function saveQuestEdits(id, originalQuest) {
+            const title = document.getElementById('edit-quest-title')?.value || originalQuest.title;
+            const description = document.getElementById('edit-quest-desc')?.value || originalQuest.description;
+            const reward = document.getElementById('edit-quest-reward')?.value || originalQuest.reward;
+            
+            const updates = {
+                title: title,
+                description: description,
+                reward: reward || null
+            };
+            
+            // Update stages for multi-stage quests
+            if (originalQuest.type === 'multi-stage' && originalQuest.stages) {
+                const stages = originalQuest.stages || [];
+                updates.stages = {};
+                
+                stages.forEach((stage, idx) => {
+                    const stageTitle = document.getElementById(`edit-stage-${idx}-title`)?.value || stage.title;
+                    const stageDesc = document.getElementById(`edit-stage-${idx}-desc`)?.value || stage.description;
+                    const stageReward = document.getElementById(`edit-stage-${idx}-reward`)?.value || stage.reward;
+                    const stageStatus = document.getElementById(`edit-stage-${idx}-status`)?.value || stage.status;
+                    
+                    updates.stages[stage.id] = {
+                        ...stage,
+                        title: stageTitle,
+                        description: stageDesc,
+                        reward: stageReward || null,
+                        status: stageStatus
+                    };
+                });
+            }
+            
+            const questRef = window.firebaseRef(window.db, `quests/${id}`);
+            window.firebaseUpdate(questRef, updates)
+                .then(() => {
+                    closeCustomPrompt();
+                    showNotification('QUEST UPDATED SUCCESSFULLY');
+                    // Refresh the issued quests view
+                    setTimeout(() => renderIssuedQuests(), 500);
+                })
+                .catch(err => {
+                    console.error('[Edit Quest] Firebase update failed:', err);
+                    showNotification('ERROR UPDATING QUEST: ' + err.message);
+                });
         }
 
         function acceptQuest(id) {
