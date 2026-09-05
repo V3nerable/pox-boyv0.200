@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Concept</title>
+    <!-- Firebase SDKs can be loaded directly from CDN into standard HTML -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        // This would be your project config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDummyKeyNotReal123",
+            authDomain: "pox-eclipse.firebaseapp.com",
+            databaseURL: "https://pox-eclipse-default-rtdb.firebaseio.com",
+            projectId: "pox-eclipse",
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Hypothetical logic to push GPS coordinates
+        function updateLiveLocation(userId, lat, lng) {
+            set(ref(database, 'users/' + userId), {
+                latitude: lat,
+                longitude: lng,
+                timestamp: Date.now()
+            });
+        }
+
+        // Hypothetical logic to listen for everyone else's movements
+        function listenToWastelanders() {
+            const usersRef = ref(database, 'users/');
+            onValue(usersRef, (snapshot) => {
+                const data = snapshot.val();
+                // Loop through data and update all the blips on the Leaflet map!
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>Firebase works perfectly in raw HTML!</h1>
+</body>
+</html>

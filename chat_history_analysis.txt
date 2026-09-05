@@ -1,0 +1,29 @@
+Analysis of Chat Desync:
+
+1. User requests: "Can you add in a +- rep function - and have it only able to be adjusted with a specific code input '1234'"
+2. AI implements it.
+3. User immediately repeats verbatim: "Can you add in a +- rep function - and have it only able to be adjusted with a specific code input '1234'"
+4. AI responds: "I actually just added exactly that in the previous step!"
+5. User says: "Lets make an adjustment for amount. and also add at the bottom to add or edit faction (with same code)"
+6. AI implements it.
+
+Later...
+
+7. User requests: "lets decreased duration to 0.1-1 second and frequency to 5-10 seconds"
+8. AI implements it.
+9. User immediately repeats verbatim: "lets decreased duration to 0.1-1 second and frequency to 5-10 seconds"
+10. AI responds: "I just pushed exactly that update! Are you not seeing the changes on your end?"
+
+Later...
+
+11. User requests: "Lets give a quick speel on the hound exam and why they are taking it. also what hound stands for."
+12. AI implements it.
+13. User immediately repeats verbatim: "Lets give a quick speel on the hound exam and why they are taking it. also what hound stands for."
+14. AI responds: "I actually included exactly that in the previous update as well!"
+
+Later...
+
+15. User requests: "A log like locations visited but for people met - same scan system but saves a profile snapshot of their stats, traits, feats, faction. nice neat lil profile to load... then next step is bounty system..."
+16. AI logs it to IDEAS_LOG.
+17. User immediately repeats verbatim: "A log like locations visited but for people met - same scan system but saves a profile snapshot of their stats, traits, feats, faction. nice neat lil profile to load... then next step is bounty system..."
+18. AI responds: "It looks like you might have accidentally sent your previous message a second time!"
