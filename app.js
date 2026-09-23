@@ -283,17 +283,17 @@
         // Removal: ONLY at decontamination stations (decon zone, once per entry).
         // Starched Genes perk: locks mutations permanently (decon can't strip).
         const MUTATIONS = [
-            { id: 'egg_head', name: 'EGG HEAD', buff: {I:2}, debuff: {S:-2}, desc: '+2 INT / −2 STR' },
-            { id: 'marsupial', name: 'MARSUPIAL', buff: {A:2}, debuff: {E:-2}, desc: '+2 AGI / −2 END' },
-            { id: 'scaly', name: 'SCALY', buff: {E:2}, debuff: {C:-2}, desc: '+2 END / −2 CHA' },
-            { id: 'adrenal', name: 'ADRENAL', buff: {S:2}, debuff: {L:-2}, desc: '+2 STR / −2 LCK' },
-            { id: 'eagle_eyes', name: 'EAGLE EYES', buff: {P:2}, debuff: {A:-2}, desc: '+2 PER / −2 AGI' },
-            { id: 'thick_skin', name: 'THICK SKIN', buff: {E:2}, debuff: {I:-2}, desc: '+2 END / −2 INT' },
-            { id: 'glow_blood', name: 'GLOW BLOOD', buff: {L:2}, debuff: {P:-2}, desc: '+2 LCK / −2 PER' },
-            { id: 'carnivore', name: 'CARNIVORE', buff: {S:2}, debuff: {C:-2}, desc: '+2 STR / −2 CHA', clashes: ['herbivore'] },
-            { id: 'herbivore', name: 'HERBIVORE', buff: {E:2}, debuff: {S:-2}, desc: '+2 END / −2 STR', clashes: ['carnivore'] },
-            { id: 'nightkin', name: 'NIGHTKIN', buff: {P:2}, debuff: {S:-2}, desc: '+2 PER / −2 STR' },
-            { id: 'whisperer', name: 'WASTELAND WHISPERER', buff: {C:2}, debuff: {E:-2}, desc: '+2 CHA / −2 END' }
+            { id: 'egg_head', name: 'EGG HEAD', buff: {I:2}, debuff: {S:-2}, desc: '+2 INT / −2 STR', flavor: 'Your cranium has expanded to accommodate enhanced cognitive functions. Your skull now resembles an egg, and your neck muscles struggle to support the weight. You can solve complex equations but can barely lift a weapon.' },
+            { id: 'marsupial', name: 'MARSUPIAL', buff: {A:2}, debuff: {E:-2}, desc: '+2 AGI / −2 END', flavor: 'Your legs have elongated and strengthened, giving you incredible jumping ability. However, your bones have become hollow and fragile. You can leap buildings but shatter like glass on impact.' },
+            { id: 'scaly', name: 'SCALY', buff: {E:2}, debuff: {C:-2}, desc: '+2 END / −2 CHA', flavor: 'Your skin has hardened into reptilian scales, providing excellent protection. Unfortunately, you now smell like a wet lizard and your social skills have suffered accordingly.' },
+            { id: 'adrenal', name: 'ADRENAL', buff: {S:2}, debuff: {L:-2}, desc: '+2 STR / −2 LCK', flavor: 'Your adrenal glands are in constant overdrive, giving you incredible strength. But your hands shake uncontrollably and luck seems to avoid you like the plague.' },
+            { id: 'eagle_eyes', name: 'EAGLE EYES', buff: {P:2}, debuff: {A:-2}, desc: '+2 PER / −2 AGI', flavor: 'Your eyes have mutated to provide incredible long-range vision. You can spot a radroach at 500 paces, but your depth perception is shot and you trip over your own feet constantly.' },
+            { id: 'thick_skin', name: 'THICK SKIN', buff: {E:2}, debuff: {I:-2}, desc: '+2 END / −2 INT', flavor: 'Your skin has become incredibly dense and resistant to damage. However, the thickening has pressed against your brain, making complex thoughts feel like wading through molasses.' },
+            { id: 'glow_blood', name: 'GLOW BLOOD', buff: {L:2}, debuff: {P:-2}, desc: '+2 LCK / −2 PER', flavor: 'Your blood now glows with an eerie luminescence and seems to bend probability in your favor. But the radiation has damaged your optic nerves, making it hard to see clearly.' },
+            { id: 'carnivore', name: 'CARNIVORE', buff: {S:2}, debuff: {C:-2}, desc: '+2 STR / −2 CHA', flavor: 'Your digestive system has adapted to process raw meat with incredible efficiency. You gain strength from flesh, but your breath now smells like death and people avoid you instinctively.', clashes: ['herbivore'] },
+            { id: 'herbivore', name: 'HERBIVORE', buff: {E:2}, debuff: {S:-2}, desc: '+2 END / −2 STR', flavor: 'Your body has evolved to extract maximum nutrition from plants. You can survive on grass if needed, but your muscles have atrophied from lack of protein.', clashes: ['carnivore'] },
+            { id: 'nightkin', name: 'NIGHTKIN', buff: {P:2}, debuff: {S:-2}, desc: '+2 PER / −2 STR', flavor: 'Your eyes have adapted to see perfectly in darkness, giving you incredible night vision. But your muscles have weakened from spending too much time hiding in the shadows.' },
+            { id: 'whisperer', name: 'WASTELAND WHISPERER', buff: {C:2}, debuff: {E:-2}, desc: '+2 CHA / −2 END', flavor: 'You can now communicate with the creatures of the wasteland, from radroaches to deathclaws. They understand you perfectly, but the constant whispers have left you exhausted and frail.' }
         ];
         let activeMutations = [];
         (function loadMutations() {
@@ -383,7 +383,12 @@
             activeMutations.forEach(mid => {
                 const m = MUTATIONS.find(x => x.id === mid);
                 if (!m) return;
-                html += '<div class="item-row" style="cursor:default;"><div class="item-info"><div style="color:#ff9a3c; text-shadow:0 0 5px #ff9a3c;">☢ ' + escapeHtml(m.name) + '</div><div class="item-effects">' + escapeHtml(m.desc) + '</div></div></div>';
+                html += '<div class="item-row" style="cursor:default; flex-direction: column; align-items: flex-start;">';
+                html += '<div class="item-info" style="width: 100%;">';
+                html += '<div style="color:#ff9a3c; text-shadow:0 0 5px #ff9a3c; font-size: 1.1rem; margin-bottom: 5px;">☢ ' + escapeHtml(m.name) + '</div>';
+                html += '<div class="item-effects" style="color: #5fc98e; margin-bottom: 8px;">' + escapeHtml(m.desc) + '</div>';
+                html += '<div style="font-size: 0.85rem; opacity: 0.8; line-height: 1.4; font-style: italic; color: #ffb642;">"' + escapeHtml(m.flavor) + '"</div>';
+                html += '</div></div>';
             });
             if (starchedPlayerUnlocked) {
                 html += '<p style="font-size:0.85rem; opacity:0.7; margin-top:8px; color:#ffb642;">🧬 STARCHED GENES ACTIVE — MUTATIONS LOCKED.</p>';
@@ -2075,76 +2080,20 @@
 
         function openCreateQuestModal() {
             showCustomPrompt('SELECT QUEST TYPE', [
-                { label: '📋 DIRECT (send to specific person)', action: () => createQuestForm('direct') },
-                { label: '🌍 GLOBAL (visible to all)', action: () => createQuestForm('global') },
-                { label: '☠ BOUNTY (hunt a target)', action: () => createQuestForm('bounty') },
                 { label: '🔗 MULTI-STAGE (multiple objectives)', action: () => createQuestForm('multi-stage') },
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
         }
 
         function createQuestForm(type) {
-            // Handle multi-stage quests separately
+            // v0.219: Only multi-stage quests are supported now
             if (type === 'multi-stage') {
                 createMultiStageQuestForm();
                 return;
             }
             
-            // Show the unified quest creation modal
-            document.getElementById('create-quest-modal').style.display = 'flex';
-            document.getElementById('cq-modal-title').innerText = 'CREATE ' + type.toUpperCase() + ' QUEST';
-            
-            // v0.171: Show regular form elements and hide stage management section
-            const formGroups = ['quest-recipient-group', 'quest-target-group'];
-            formGroups.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = 'block';
-            });
-            
-            // Show individual form fields (they're inside form-group divs without IDs)
-            const formFields = ['new-quest-title', 'new-quest-desc', 'new-quest-reward'];
-            formFields.forEach(id => {
-                const el = document.getElementById(id);
-                if (el && el.parentElement) el.parentElement.style.display = 'block';
-            });
-            
-            // Show submit button directly
-            const submitBtn = document.getElementById('submit-quest-btn');
-            if (submitBtn) submitBtn.style.display = 'block';
-            
-            // Hide stage management section if it exists
-            const stageSection = document.getElementById('stage-management-section');
-            if (stageSection) {
-                stageSection.style.display = 'none';
-            }
-            
-            // Clear form fields
-            document.getElementById('new-quest-title').value = '';
-            document.getElementById('new-quest-desc').value = '';
-            document.getElementById('new-quest-reward').value = '';
-            document.getElementById('new-quest-recipient-display').value = '';
-            document.getElementById('new-quest-recipient').value = '';
-            document.getElementById('new-quest-target-display').value = '';
-            document.getElementById('new-quest-target').value = '';
-            
-            // Store the quest type for submission
-            window.pendingQuestType = type;
-            
-            // Show/hide recipient/target fields based on type
-            const recipientGroup = document.getElementById('quest-recipient-group');
-            const targetGroup = document.getElementById('quest-target-group');
-            
-            if (type === 'direct') {
-                recipientGroup.style.display = 'block';
-                targetGroup.style.display = 'none';
-            } else if (type === 'bounty') {
-                recipientGroup.style.display = 'none';
-                targetGroup.style.display = 'block';
-            } else {
-                // Global quest - no recipient or target
-                recipientGroup.style.display = 'none';
-                targetGroup.style.display = 'none';
-            }
+            // Should never reach here, but just in case
+            showNotification('ERROR: Only multi-stage quests are supported');
         }
         
         // v0.153: Multi-stage quest creation
