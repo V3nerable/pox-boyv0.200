@@ -2079,10 +2079,8 @@
         }
 
         function openCreateQuestModal() {
-            showCustomPrompt('SELECT QUEST TYPE', [
-                { label: '🔗 MULTI-STAGE (multiple objectives)', action: () => createQuestForm('multi-stage') },
-                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
+            // v0.219: Only multi-stage quests exist, go straight to creation form
+            createMultiStageQuestForm();
         }
 
         function createQuestForm(type) {
