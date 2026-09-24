@@ -2224,12 +2224,11 @@
         }
         
         function addStage() {
-            // Show stage type picker
+            // v0.220: Removed scan-code stage type
             showCustomPrompt('SELECT STAGE TYPE', [
                 { label: '📍 LOCATION (go to location)', action: () => addStageOfType('location') },
                 { label: '☠ BOUNTY (hunt target)', action: () => addStageOfType('bounty') },
                 { label: '📷 PHOTO (take photo)', action: () => addStageOfType('photo') },
-                { label: '📱 SCAN CODE (scan QR)', action: () => addStageOfType('scan-code') },
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
         }
@@ -6801,31 +6800,23 @@
         }
 
         function archiveEntry(entry) {
+            // v0.220: Zero limits on photos - no pruning
             photoArchive.unshift(entry);
             console.log('[PhotoStorage] archiveEntry: Added photo, total:', photoArchive.length);
-            let pruned = 0;
-            for (;;) {
-                try {
-                    // v0.210: Save to IndexedDB (or localStorage fallback)
-                    if (typeof savePhotoArchive === 'function') {
-                        savePhotoArchive();
-                    } else {
-                        localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                        console.log('[PhotoStorage] archiveEntry: Saved to localStorage (savePhotoArchive not available)');
-                    }
-                    break;
+            
+            try {
+                // v0.210: Save to IndexedDB (or localStorage fallback)
+                if (typeof savePhotoArchive === 'function') {
+                    savePhotoArchive();
+                } else {
+                    localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
+                    console.log('[PhotoStorage] archiveEntry: Saved to localStorage (savePhotoArchive not available)');
                 }
-                catch (e) {
-                    console.error('[PhotoStorage] archiveEntry: Save error:', e);
-                    if (photoArchive.length <= 1) {
-                        photoArchive.shift();
-                        showNotification('DATABANK FULL -- DELETE OLD SHOTS.');
-                        return;
-                    }
-                    photoArchive.pop(); pruned++;
-                }
+            } catch (e) {
+                console.error('[PhotoStorage] archiveEntry: Save error:', e);
+                showNotification('STORAGE ERROR: Photo may not be saved. Check console for details.');
             }
-            if (pruned) showNotification('DATABANK PRESSURE: ' + pruned + ' OLDEST SHOT' + (pruned > 1 ? 'S' : '') + ' PURGED.');
+            
             renderPhotoGallery();
             const saved = photoArchive[0];
             showNotification('PHOTO SECURED: ' + (saved.raw && saved.pip ? 'RAW + PIP ' : '') + '(' + photoArchive.length + ' IN DATABANK).');
