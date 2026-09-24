@@ -6700,14 +6700,13 @@
             try {
                 if (PhotoDB.db) {
                     console.log('[PhotoStorage] Using IndexedDB');
-                    // Clear IndexedDB and re-add all photos from photoArchive
-                    await PhotoDB.clear();
-                    console.log('[PhotoStorage] Cleared IndexedDB');
-                    
-                    for (const photo of photoArchive) {
-                        await PhotoDB.add(photo);
+                    // v0.221: Don't clear and re-add, just add the new photo
+                    // Get the last photo (most recently added)
+                    const lastPhoto = photoArchive[0];
+                    if (lastPhoto) {
+                        await PhotoDB.add(lastPhoto);
+                        console.log('[PhotoStorage] Added latest photo to IndexedDB');
                     }
-                    console.log('[PhotoStorage] Added', photoArchive.length, 'photos to IndexedDB');
                     
                     // Update in-memory array from IndexedDB to ensure sync
                     photoArchive = await PhotoDB.getAll();
