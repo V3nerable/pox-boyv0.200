@@ -6794,7 +6794,8 @@
                 showNotification('PHOTO LOST: SENSOR FRAME UNREADABLE.'); // LOUD failure, never silent
                 return false;
             }
-            archiveEntry({ pip: pipURL, raw: rawURL });
+            // v0.222: Add timestamp to entry for export filtering
+            archiveEntry({ pip: pipURL, raw: rawURL, timestamp: Date.now() });
             return true;
         }
 

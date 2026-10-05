@@ -186,7 +186,8 @@
             "rejectedBy":      { ".validate": "newData.isString() && newData.val().length <= 64" },
             "rejectedAt":      { ".validate": "newData.isNumber() || newData.val() == null" },
             "abandonedAt":     { ".validate": "newData.isNumber() || newData.val() == null" },
-            "stages": {
+            "stages":          { 
+              ".validate": "newData.hasChildren()",
               "$stageId": {
                 ".write": true,
                 "status":        { ".validate": "newData.isString() && (newData.val() == 'available' || newData.val() == 'locked' || newData.val() == 'completed')" },
