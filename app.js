@@ -3004,7 +3004,7 @@
             modal.style.display = 'flex';
         }
 
-        // v0.163: Pick photo from databank for multi-stage evidence
+        // v0.224: Pick photo from databank for multi-stage evidence
         function pickMultiStagePhoto(idx) {
             const pending = window.pendingMultiStageEvidence;
             if (!pending) return;
@@ -3012,14 +3012,64 @@
             window.pendingMultiStageEvidence = null;
             document.getElementById('photo-pick-modal').style.display = 'none';
             
-            // Get photo data URL
-            const photoDataUrl = photoArchive[idx];
+            // v0.224: Get photo data URL using entryPip to handle both string and object formats
+            const photoEntry = photoArchive[idx];
+            const photoDataUrl = entryPip(photoEntry);
             
-            // Complete the stage
-            completeMultiStageStage(pending.questId, pending.stageIdx, { photo: photoDataUrl });
+            console.log('[Multi-Stage] Picking photo for evidence');
+            console.log('[Multi-Stage] Photo entry type:', typeof photoEntry);
+            console.log('[Multi-Stage] Photo URL length:', photoDataUrl.length);
             
-            // Switch to data tab
-            switchMainTab('data');
+            // v0.224: Compress photo if too large (Firebase has 10MB limit, but let's be safe)
+            const MAX_PHOTO_SIZE = 500000; // 500KB limit for evidence photos
+            if (photoDataUrl.length > MAX_PHOTO_SIZE) {
+                console.log('[Multi-Stage] Photo too large, compressing...');
+                compressPhotoForEvidence(photoDataUrl, (compressedUrl) => {
+                    console.log('[Multi-Stage] Compressed photo URL length:', compressedUrl.length);
+                    completeMultiStageStage(pending.questId, pending.stageIdx, { photo: compressedUrl });
+                    switchMainTab('data');
+                });
+            } else {
+                // Complete the stage with this photo
+                completeMultiStageStage(pending.questId, pending.stageIdx, { photo: photoDataUrl });
+                switchMainTab('data');
+            }
+        }
+        
+        // v0.224: Compress photo for evidence submission
+        function compressPhotoForEvidence(dataUrl, callback) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 800; // Max dimension
+                let width = img.width;
+                let height = img.height;
+                
+                // Scale down if too large
+                if (width > MAX_SIZE || height > MAX_SIZE) {
+                    if (width > height) {
+                        height = Math.round((height * MAX_SIZE) / width);
+                        width = MAX_SIZE;
+                    } else {
+                        width = Math.round((width * MAX_SIZE) / height);
+                        height = MAX_SIZE;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Compress to JPEG with quality 0.6
+                const compressedUrl = canvas.toDataURL('image/jpeg', 0.6);
+                callback(compressedUrl);
+            };
+            img.onerror = function() {
+                console.error('[Multi-Stage] Failed to load photo for compression');
+                callback(dataUrl); // Fallback to original
+            };
+            img.src = dataUrl;
         }
 
         // v0.160: Scan bounty target for bounty stages
@@ -6352,17 +6402,27 @@
                     const pending = window.pendingMultiStageEvidence;
                     window.pendingMultiStageEvidence = null;
                     
-                    // Get the photo data URL from the canvas
+                    // v0.224: Get the photo data URL from the canvas and compress if needed
                     const photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    console.log('[Multi-Stage] Photo URL length:', photoDataUrl.length);
                     
                     // v0.161: Properly stop camera and clean up UI BEFORE switching tabs
                     stopCamera();
                     
-                    // Complete the stage with this photo
-                    completeMultiStageStage(pending.questId, pending.stageIdx, { photo: photoDataUrl });
-                    
-                    // v0.161: Use proper tab switching
-                    switchMainTab('data');
+                    // v0.224: Compress photo if too large
+                    const MAX_PHOTO_SIZE = 500000; // 500KB limit
+                    if (photoDataUrl.length > MAX_PHOTO_SIZE) {
+                        console.log('[Multi-Stage] Photo too large, compressing...');
+                        compressPhotoForEvidence(photoDataUrl, (compressedUrl) => {
+                            console.log('[Multi-Stage] Compressed photo URL length:', compressedUrl.length);
+                            completeMultiStageStage(pending.questId, pending.stageIdx, { photo: compressedUrl });
+                            switchMainTab('data');
+                        });
+                    } else {
+                        // Complete the stage with this photo
+                        completeMultiStageStage(pending.questId, pending.stageIdx, { photo: photoDataUrl });
+                        switchMainTab('data');
+                    }
                     return;
                 }
 
