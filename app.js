@@ -2107,7 +2107,7 @@
             
             // Show multi-stage quest creation modal
             document.getElementById('create-quest-modal').style.display = 'flex';
-            document.getElementById('cq-modal-title').innerText = 'CREATE MULTI-STAGE QUEST';
+            document.getElementById('cq-modal-title').innerText = 'CREATE QUEST';
             
             // Clear form fields
             document.getElementById('new-quest-title').value = '';
@@ -2149,7 +2149,7 @@
             if (submitBtn) submitBtn.style.display = 'none';
             
             // Update title
-            document.getElementById('cq-modal-title').innerText = 'CREATE MULTI-STAGE QUEST';
+            document.getElementById('cq-modal-title').innerText = 'CREATE QUEST';
             
             // Create or update stage management section
             let stageSection = document.getElementById('stage-management-section');
@@ -2185,7 +2185,7 @@
                     <button class="pip-btn" onclick="addStage()" style="margin-top: 10px; border-style: dashed;">+ ADD STAGE</button>
                 </div>
                 <div id="ms-error" style="display: none; color: #ff3333; background: rgba(255, 51, 51, 0.1); border: 1px solid #ff3333; padding: 10px; margin-top: 15px; font-size: 0.9rem;"></div>
-                <button class="pip-btn" onclick="submitMultiStageQuest()" style="margin-top: 15px;">CREATE MULTI-STAGE QUEST</button>
+                <button class="pip-btn" onclick="submitMultiStageQuest()" style="margin-top: 15px;">CREATE QUEST</button>
             `;
             
             // Render stages
@@ -2224,11 +2224,10 @@
         }
         
         function addStage() {
-            // v0.220: Removed scan-code stage type
+            // v0.223: Only BOUNTY and PHOTO quest types
             showCustomPrompt('SELECT STAGE TYPE', [
-                { label: '📍 LOCATION (go to location)', action: () => addStageOfType('location') },
-                { label: '☠ BOUNTY (hunt target)', action: () => addStageOfType('bounty') },
-                { label: '📷 PHOTO (take photo)', action: () => addStageOfType('photo') },
+                { label: '☠ BOUNTY (scan target datacard)', action: () => addStageOfType('bounty') },
+                { label: '📷 PHOTO (take/submit photo)', action: () => addStageOfType('photo') },
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
         }
@@ -3217,6 +3216,20 @@
                         if (p.evidencePhoto) text += `\n📷 EVIDENCE ATTACHED`;
                     }
                     
+                    buttons.push({ 
+                        label: `VIEW EVIDENCE`, 
+                        color: '#42b6ff', 
+                        action: () => {
+                            // View evidence for this user's completion
+                            if (p.evidencePhoto) {
+                                viewEvidencePhoto(p.evidencePhoto);
+                            } else if (p.evidenceScan) {
+                                showNotification('EVIDENCE: DATACARD SCAN (UID: ' + p.evidenceScan + ')');
+                            } else {
+                                showNotification('NO EVIDENCE ATTACHED');
+                            }
+                        }
+                    });
                     buttons.push({ 
                         label: `VERIFY ${p.completedByName || 'UNKNOWN'}`, 
                         color: '#39ff14', 
