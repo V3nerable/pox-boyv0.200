@@ -431,3 +431,54 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 - This ensures all photos are properly saved and exported regardless of timing
 
 **Cache version:** Bumped to v223
+
+### v0.235 - Auto-Export ON by Default
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Auto-export now ON by default** - Photos automatically save to phone when taken, no manual export needed
+   - Changed default behavior: auto-export is now ON unless explicitly disabled
+   - Photos are immediately downloaded to phone's download folder when captured
+   - Both PIP (themed) and RAW (original) versions are saved automatically
+   - Users can still toggle auto-export OFF in options if desired
+   - Manual bulk export still available for exporting multiple photos at once
+
+**Technical Details:**
+- Changed check from `=== '1'` to `!== '0'` so auto-export is ON by default
+- `exportEntry()` is called automatically after each photo is saved to databank
+- No prompts or dialogs - photos just download silently
+- One-time coaching message still appears on first export to explain where files land
+
+**User Experience:**
+- Take photo → automatically downloads to phone's download folder
+- No need to manually export from databank
+- Photos appear in phone's gallery app automatically
+- Can still view/manage photos in databank
+- Bulk export still available if needed
+
+**Cache version:** Bumped to v224
+
+### v0.236 - Auto-Save Photos Immediately (No Prompts)
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Photos auto-save immediately when taken** - No prompts, no delays, just works
+   - Fixed browser download blocking issue by triggering download immediately within user interaction context
+   - Download now happens in `archiveEntry()` BEFORE async save operations
+   - This ensures the browser recognizes it as a user-initiated action and allows the download
+   - Removed duplicate auto-export call that was happening after async save (too late for browser)
+
+**Technical Details:**
+- Moved auto-download logic from after `savePhotoArchive()` to inside `archiveEntry()` before async operations
+- Download triggers immediately when photo is captured (within click/tap event context)
+- Both PIP and RAW versions download automatically
+- No prompts or dialogs - completely silent
+- Browser download blockers no longer interfere because download is synchronous with user action
+
+**User Experience:**
+- Take photo → immediately downloads to phone (no waiting, no prompts)
+- Works reliably every time
+- Photos appear in download folder and gallery app
+- Still saved to databank for in-app viewing
+
+**Cache version:** Bumped to v225

@@ -6992,6 +6992,16 @@
             photoArchive.unshift(entry);
             console.log('[PhotoStorage] archiveEntry: Added photo, total:', photoArchive.length);
             
+            // v0.235: Auto-download immediately (within user interaction context)
+            // This must happen BEFORE async operations to avoid browser download blockers
+            if (localStorage.getItem('pipboy-auto-export') !== '0') {
+                const stamp = Date.now();
+                downloadDataUrl(entryPip(entry), `POXBOY_${stamp}_PIP.jpg`);
+                const raw = entryRaw(entry);
+                if (raw) downloadDataUrl(raw, `POXBOY_${stamp}_RAW.jpg`);
+                coachExportOnce();
+            }
+            
             try {
                 // v0.210: Save to IndexedDB (or localStorage fallback)
                 if (typeof savePhotoArchive === 'function') {
@@ -7008,7 +7018,6 @@
             renderPhotoGallery();
             const saved = photoArchive[0];
             showNotification('PHOTO SECURED: ' + (saved.raw && saved.pip ? 'RAW + PIP ' : '') + '(' + photoArchive.length + ' IN DATABANK).');
-            if (localStorage.getItem('pipboy-auto-export') === '1') exportEntry(saved);
             
             // v0.192: Flavor event - photo milestones (every 10 photos)
             const photoCount = photoArchive.length;
@@ -7020,14 +7029,46 @@
         }
 
         // ================= GALLERY EXPORT / SHARE (v0.43) =================
+        // v0.236: Optimized for silent downloads using Blob URLs
         function downloadDataUrl(dataURL, filename) {
             if (!dataURL) return;
-            const a = document.createElement('a');
-            a.href = dataURL;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            
+            // Convert data URL to Blob for more efficient download
+            try {
+                const byteString = atob(dataURL.split(',')[1]);
+                const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                const blob = new Blob([ab], { type: mimeString });
+                
+                // Create blob URL and trigger download
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(blobUrl);
+                }, 100);
+            } catch (e) {
+                console.error('Download failed:', e);
+                // Fallback to original method
+                const a = document.createElement('a');
+                a.href = dataURL;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        }
         }
 
         function exportEntry(entry) {
@@ -7157,9 +7198,10 @@
             showNotification('AUTO-EXPORT ' + (on ? 'ON -- EVERY SHOT ALSO FILES TO THE GALLERY-INDEXED DOWNLOAD FOLDER.' : 'OFF.'));
         }
         // Boot label sync
+        // v0.234: Default to ON (only OFF if explicitly set to '0')
         (function() {
             const b = document.getElementById('options-export-btn');
-            if (b && localStorage.getItem('pipboy-auto-export') === '1') b.innerText = '[AUTO-EXPORT: ON]';
+            if (b && localStorage.getItem('pipboy-auto-export') !== '0') b.innerText = '[AUTO-EXPORT: ON]';
         })();
         
         // v0.145: Add button press sound to all pip-btn, theme-btn, and sub-nav-item elements
