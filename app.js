@@ -6886,19 +6886,19 @@
             try {
                 if (PhotoDB.db) {
                     console.log('[PhotoStorage] Using IndexedDB');
-                    // v0.221: Don't clear and re-add, just add the new photo
-                    // Get the last photo (most recently added)
-                    const lastPhoto = photoArchive[0];
-                    if (lastPhoto) {
-                        await PhotoDB.add(lastPhoto);
-                        console.log('[PhotoStorage] Added latest photo to IndexedDB');
-                    }
+                    // v0.234: Save ALL photos to IndexedDB (not just the newest)
+                    // Clear existing photos first to avoid duplicates
+                    await PhotoDB.clear();
+                    console.log('[PhotoStorage] Cleared IndexedDB');
                     
-                    // Update in-memory array from IndexedDB to ensure sync
-                    photoArchive = await PhotoDB.getAll();
-                    // v0.233: Reverse array so newest photos are first (IndexedDB returns oldest first by auto-increment ID)
-                    photoArchive.reverse();
-                    console.log('[PhotoStorage] Synced photoArchive from IndexedDB, count:', photoArchive.length);
+                    // Add all photos from in-memory array
+                    for (const photo of photoArchive) {
+                        await PhotoDB.add(photo);
+                    }
+                    console.log('[PhotoStorage] Saved', photoArchive.length, 'photos to IndexedDB');
+                    
+                    // v0.234: Don't reload from IndexedDB - keep in-memory array as source of truth
+                    // This prevents race conditions when saving multiple photos quickly
                 } else {
                     console.log('[PhotoStorage] Using localStorage fallback');
                     localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));

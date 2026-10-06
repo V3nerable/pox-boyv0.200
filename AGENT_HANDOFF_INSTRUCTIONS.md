@@ -412,3 +412,22 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 - Modals with `position: fixed` create stacking contexts relative to viewport, allowing proper z-index comparison
 
 **Cache version:** Bumped to v222
+
+### v0.234 - Photo Export Bug Fix (Critical)
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Fixed critical photo export bug** - Only last photo was being exported when taking multiple photos
+   - Root cause: `savePhotoArchive()` was only saving the newest photo to IndexedDB, then reloading all photos from IndexedDB
+   - This caused a race condition where photos taken in quick succession could be lost or not exported
+   - Fixed by saving ALL photos to IndexedDB (clearing first to avoid duplicates) and keeping in-memory array as source of truth
+   - No longer reloads from IndexedDB after save to prevent race conditions
+
+**Technical Details:**
+- `savePhotoArchive()` now calls `PhotoDB.clear()` before saving all photos
+- Removed the reload logic that was causing race conditions
+- In-memory `photoArchive` array is now the single source of truth
+- IndexedDB is used for persistence only, not for syncing state
+- This ensures all photos are properly saved and exported regardless of timing
+
+**Cache version:** Bumped to v223
