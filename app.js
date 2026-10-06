@@ -2496,6 +2496,8 @@
                     description: description,
                     issuerUid: myUid,
                     issuerName: myName,
+                    // v0.227: Mark as direct quest if recipient is set
+                    assignedTo: window.pendingDirectQuestRecipient || null,
                     stages: window.pendingMultiStageQuest.stages.map((stage, idx) => ({
                         id: 'stage' + (idx + 1),
                         type: stage.type,
@@ -2524,8 +2526,30 @@
                 const questRef = window.firebaseRef(window.db, 'quests');
                 window.firebasePush(questRef, questData)
                     .then(ref => {
-                        console.log('Quest created with key:', ref.key);
-                        showNotification('MULTI-STAGE QUEST CREATED');
+                        const questId = ref.key;
+                        console.log('Quest created with key:', questId);
+                        
+                        // v0.227: If this is a direct quest, send quest-offer mail to recipient
+                        if (window.pendingDirectQuestRecipient) {
+                            const recipientUid = window.pendingDirectQuestRecipient;
+                            const recipientName = window.pendingDirectQuestRecipientName || 'UNKNOWN';
+                            console.log('Sending direct quest offer to:', recipientUid, recipientName);
+                            queueMail(recipientUid, 'quest-offer', {
+                                questId: questId,
+                                title: title,
+                                description: description
+                            }, 'QUEST OFFER: ' + title + ' FROM ' + myName);
+                            showNotification('DIRECT QUEST SENT TO ' + recipientName.toUpperCase());
+                            window.pendingDirectQuestRecipient = null;
+                            window.pendingDirectQuestRecipientName = null;
+                        } else {
+                            showNotification('MULTI-STAGE QUEST CREATED');
+                        }
+                        
+                        // Clean up recipient note if it exists
+                        const recipientNote = document.getElementById('direct-quest-recipient-note');
+                        if (recipientNote) recipientNote.remove();
+                        
                         closeModals();
                         switchQuestTab('issued');
                     })
@@ -2958,9 +2982,9 @@
             window.firebaseSet(progRef, progressData)
                 .then(() => {
                     closeCustomPrompt();
-                    showNotification('QUEST ACCEPTED');
+                    // v0.227: Skip notification modal — quest details modal opens next and they were overlapping
                     playSound('lunchbox');
-                    setTimeout(() => openMultiStageQuestModal(id), 500);
+                    setTimeout(() => openMultiStageQuestModal(id), 300);
                 })
                 .catch(err => showNotification('ERROR ACCEPTING QUEST: ' + err.message));
         }
@@ -3077,8 +3101,8 @@
             window.pendingMultiStageBounty = { questId, stageIdx };
             closeCustomPrompt();
             
-            // v0.161: Use proper tab switching
-            switchMainTab('scan');
+            // v0.227: Open QR scanner modal directly instead of switching tabs
+            document.getElementById('qr-scan-modal').style.display = 'flex';
             startQRScanner();
             
             showNotification('SCAN TARGET DATACARD FOR STAGE ' + (stageIdx + 1));
@@ -4903,12 +4927,12 @@
             // v0.189: Create both tile layers (dark and satellite)
             darkTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
-                maxZoom: 16
+                maxZoom: 21
             });
             
             satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                maxZoom: 19
+                maxZoom: 21
             });
             
             // Add dark tiles by default
@@ -8567,17 +8591,42 @@
                 return;
             }
             
-            const progRef = window.firebaseRef(window.db, 'quests/' + questId + '/progress/' + myUid);
-            window.firebaseSet(progRef, {
+            // v0.227: Initialize stage progress for multi-stage quests
+            const progressData = {
                 acceptedAt: Date.now(),
                 status: 'accepted',
                 completedByName: myName
-            })
+            };
+            
+            if (quest.type === 'multi-stage' && quest.stages) {
+                const stageProgress = {};
+                quest.stages.forEach((stage, idx) => {
+                    stageProgress[stage.id] = {
+                        status: idx === 0 ? 'available' : 'locked',
+                        completedAt: null,
+                        evidencePhoto: null,
+                        evidenceScan: null
+                    };
+                });
+                progressData.stages = stageProgress;
+            }
+            
+            const progRef = window.firebaseRef(window.db, 'quests/' + questId + '/progress/' + myUid);
+            window.firebaseSet(progRef, progressData)
                 .then(() => {
-                    showNotification('QUEST ACCEPTED');
-                    markProcessed(key);
-                    retireLetter(key);
-                    if (mailTabActive()) renderMail();
+                    // v0.227: Skip notification modal for multi-stage — open quest details instead
+                    if (quest.type === 'multi-stage') {
+                        playSound('lunchbox');
+                        markProcessed(key);
+                        retireLetter(key);
+                        if (mailTabActive()) renderMail();
+                        setTimeout(() => openMultiStageQuestModal(questId), 300);
+                    } else {
+                        showNotification('QUEST ACCEPTED');
+                        markProcessed(key);
+                        retireLetter(key);
+                        if (mailTabActive()) renderMail();
+                    }
                 })
                 .catch(err => showNotification('ERROR: ' + err.message));
         }
@@ -9241,9 +9290,21 @@
                 refreshAttachUi();
                 document.getElementById('compose-msg-modal').style.display = 'flex';
             } else if (kind === 'quest') {
-                document.getElementById('cq-title').innerText = 'QUEST TO: ' + t.name;
-                ['cq-name','cq-brief','cq-obj1','cq-obj2','cq-obj3','cq-reward','cq-loc','cq-time'].forEach(id => { document.getElementById(id).value = ''; });
-                document.getElementById('compose-quest-modal').style.display = 'flex';
+                // v0.227: Use new multi-stage quest format for direct quests
+                window.pendingDirectQuestRecipient = t.uid;
+                window.pendingDirectQuestRecipientName = t.name;
+                createMultiStageQuestForm();
+                // Show recipient indicator in the form
+                setTimeout(() => {
+                    const recipientNote = document.createElement('div');
+                    recipientNote.id = 'direct-quest-recipient-note';
+                    recipientNote.style.cssText = 'background: var(--pip-color-dim); padding: 10px; margin-bottom: 15px; border-radius: 4px; font-size: 0.9rem;';
+                    recipientNote.innerHTML = '<strong>DIRECT QUEST TO:</strong> ' + escapeHtml(t.name);
+                    const stageSection = document.getElementById('stage-management-section');
+                    if (stageSection && stageSection.parentNode) {
+                        stageSection.parentNode.insertBefore(recipientNote, stageSection);
+                    }
+                }, 100);
             } else if (kind === 'item') {
                 openItemComposer(contactByUid(t.uid));
             }
