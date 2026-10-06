@@ -6861,6 +6861,8 @@
                     
                     // Load photos from IndexedDB
                     photoArchive = await PhotoDB.getAll();
+                    // v0.233: Reverse array so newest photos are first (IndexedDB returns oldest first by auto-increment ID)
+                    photoArchive.reverse();
                     photoArchiveReady = true;
                     console.log('[PhotoStorage] Loaded', photoArchive.length, 'photos from IndexedDB');
                 } else {
@@ -6894,6 +6896,8 @@
                     
                     // Update in-memory array from IndexedDB to ensure sync
                     photoArchive = await PhotoDB.getAll();
+                    // v0.233: Reverse array so newest photos are first (IndexedDB returns oldest first by auto-increment ID)
+                    photoArchive.reverse();
                     console.log('[PhotoStorage] Synced photoArchive from IndexedDB, count:', photoArchive.length);
                 } else {
                     console.log('[PhotoStorage] Using localStorage fallback');

@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.232</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.233</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -510,7 +510,7 @@
     </div>
 
     <!-- MY DATACARD MODAL (v0.31) -->
-    <div id="datacard-modal" class="modal-overlay" style="z-index: 120; background: var(--pip-bg);">
+    <div id="datacard-modal" class="modal-overlay" style="z-index: 120; position: fixed; background: var(--pip-bg);">
         <div class="modal-content" style="text-align: center; width: 100%; max-width: 420px;">
             <h3>MY DATACARD</h3>
             <div id="datacard-avatar" style="margin: 10px auto; display: none;"></div>
@@ -524,7 +524,7 @@
     </div>
 
     <!-- CONTACT SHEET MODAL -->
-    <div id="contact-modal" class="modal-overlay" style="z-index: 120;">
+    <div id="contact-modal" class="modal-overlay" style="z-index: 120; position: fixed;">
         <div class="modal-content">
             <h3 id="contact-name">WASTELANDER</h3>
             <p id="contact-meta" style="opacity: 0.8; font-size: 0.95rem; margin-bottom: 20px;"></p>
@@ -541,7 +541,7 @@
     </div>
 
     <!-- COMPOSE QUEST MODAL -->
-    <div id="compose-quest-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="compose-quest-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3 id="cq-title">TRANSMIT QUEST</h3>
             <div class="form-group"><label>QUEST TITLE</label><input type="text" id="cq-name" class="pip-input vk-target" readonly onclick="openVk('cq-name')" placeholder="e.g. Recover the Water Chip"></div>
@@ -582,7 +582,7 @@
     </div>
 
     <!-- EDIT QUEST MODAL (v0.225) -->
-    <div id="edit-quest-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="edit-quest-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3 id="eq-modal-title">EDIT QUEST</h3>
             <div class="form-group">
@@ -607,7 +607,7 @@
     </div>
 
     <!-- COMPOSE BOUNTY MODAL (v0.84) -->
-    <div id="compose-bounty-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="compose-bounty-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3>POST BOUNTY</h3>
             <div class="form-group"><label>SELECT TARGET</label>
@@ -625,7 +625,7 @@
     </div>
 
     <!-- COMPOSE GLOBAL CONTRACT MODAL (v0.84) -->
-    <div id="compose-global-contract-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="compose-global-contract-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3>CREATE GLOBAL CONTRACT</h3>
             <div class="form-group"><label>CONTRACT TITLE</label><input type="text" id="gc-title" class="pip-input vk-target" readonly onclick="openVk('gc-title')" placeholder="e.g. Retrieve the artifact"></div>
@@ -646,7 +646,7 @@
     </div>
 
     <!-- COMPOSE MESSAGE MODAL -->
-    <div id="compose-msg-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="compose-msg-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content">
             <h3 id="cm-title">TRANSMIT MESSAGE</h3>
             <div class="form-group"><label>MESSAGE</label><textarea id="cm-text" class="pip-input vk-target grow" readonly onclick="openVk('cm-text')" rows="1" placeholder="EYES UP. MOVEMENT AT THE RIDGE."></textarea></div>
@@ -664,7 +664,7 @@
     <!-- v0.84: quickcam removed (SNAP NOW never worked reliably; too many permission/modal conflicts) -->
 
     <!-- COMPOSE ITEM MODAL -->
-    <div id="compose-item-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="compose-item-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3 id="ci-title">TRANSMIT ITEM</h3>
             <div class="form-group"><label>SELECT ITEM FROM LOADOUT</label>
@@ -688,7 +688,7 @@
     <div id="cam-screenflash" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #fff8f0; opacity: 0.92; z-index: 100002; pointer-events: none;"></div>
 
     <!-- v0.44: PHOTO PICKER -- choose a databank shot to transmit (two-way links only) -->
-    <div id="photo-pick-modal" class="modal-overlay" style="z-index: 126;">
+    <div id="photo-pick-modal" class="modal-overlay" style="z-index: 126; position: fixed;">
         <div class="modal-content" style="max-width: 600px; max-height: 85vh;">
             <h3 id="pp-title">TRANSMIT PHOTO</h3>
             <button class="pip-btn" onclick="snapNowForPicker()" style="width: 100%; border-style: dashed; margin-bottom: 15px; background: rgba(57, 255, 20, 0.2);">📷 SNAP NOW</button>
@@ -865,7 +865,7 @@
     </div>
 
     <!-- ADD QUEST MODAL -->
-    <div id="add-quest-modal" class="modal-overlay">
+    <div id="add-quest-modal" class="modal-overlay" style="position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3>ADD NEW QUEST</h3>
             <div class="form-group"><label>QUEST TITLE</label><input type="text" id="q-name" class="pip-input vk-target" readonly onclick="openVk('q-name')" placeholder="e.g. Find the VIP Lounge"></div>
@@ -900,7 +900,7 @@
     </div>
 
     <!-- QUEST ACTION MODAL -->
-    <div id="quest-action-modal" class="modal-overlay" style="z-index: 55;">
+    <div id="quest-action-modal" class="modal-overlay" style="z-index: 55; position: fixed;">
         <div class="modal-content">
             <h3 id="qa-title" style="border-bottom: 2px solid var(--pip-color); padding-bottom: 5px; margin-bottom: 15px;">QUEST NAME</h3>
             

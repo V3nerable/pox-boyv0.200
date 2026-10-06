@@ -379,3 +379,36 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 - localStorage keys: `pipboy-exported-hashes` (array), `pipboy-last-photo-export` (timestamp)
 
 **Cache version:** Bumped to v221
+
+### v0.233 - Databank Photo Order Fix & Modal Z-Index Complete Fix
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Fixed databank photo order** - Photos were displayed in wrong order (oldest first instead of newest first)
+   - Root cause: `PhotoDB.getAll()` returns photos in order of addition (oldest first by auto-increment ID), but code expects newest first (`photoArchive[0]` should be newest)
+   - Fixed by reversing the array after loading from IndexedDB in `initPhotoStorage()` and `savePhotoArchive()`
+   - Now newest photos appear at the top of the databank and are exported first
+
+2. **Fixed modal z-index stacking (complete fix)** - Bounty person select modal still appeared behind quest modals
+   - Root cause: In v0.231, only added `position: fixed` to create-quest-modal, but other quest modals (compose-quest-modal, edit-quest-modal, compose-bounty-modal, etc.) still had `position: absolute` from CSS class
+   - When modals with `position: absolute` are siblings of modals with `position: fixed`, stacking context issues occur
+   - Fixed by adding `position: fixed` to ALL modals with z-index 120-126:
+     - datacard-modal (z-index 120)
+     - contact-modal (z-index 120)
+     - compose-quest-modal (z-index 125)
+     - create-quest-modal (z-index 125)
+     - edit-quest-modal (z-index 125)
+     - compose-bounty-modal (z-index 125)
+     - compose-global-contract-modal (z-index 125)
+     - compose-msg-modal (z-index 125)
+     - compose-item-modal (z-index 125)
+     - photo-pick-modal (z-index 126)
+   - Also added `position: fixed` to add-quest-modal and quest-action-modal for consistency
+   - Now all modals use `position: fixed` for proper stacking context
+
+**Technical Details:**
+- Photos are now reversed after loading from IndexedDB to ensure newest-first order
+- All overlay modals now consistently use `position: fixed` to avoid stacking context issues
+- Modals with `position: fixed` create stacking contexts relative to viewport, allowing proper z-index comparison
+
+**Cache version:** Bumped to v222
