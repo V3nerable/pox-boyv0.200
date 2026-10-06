@@ -8454,13 +8454,31 @@
                 
                 // Check if completion is already verified/rejected
                 let completionAlreadyProcessed = false;
+                let completerProgress = null;
                 if (quest && quest.progress && p.completedByName) {
                     const completedByUid = Object.keys(quest.progress).find(uid => {
                         return quest.progress[uid].completedByName === p.completedByName;
                     });
                     if (completedByUid) {
-                        const prog = quest.progress[completedByUid];
-                        completionAlreadyProcessed = prog.status === 'verified' || prog.status === 'rejected';
+                        completerProgress = quest.progress[completedByUid];
+                        completionAlreadyProcessed = completerProgress.status === 'verified' || completerProgress.status === 'rejected';
+                    }
+                }
+                
+                // v0.226: Get evidence photo from quest progress if not in mail payload
+                let hasEvidence = !!p.evidencePhoto;
+                if (!hasEvidence && completerProgress) {
+                    // Check for evidence in multi-stage quest stages
+                    if (completerProgress.stages) {
+                        const stages = quest.stages || [];
+                        hasEvidence = stages.some(stage => {
+                            const stageProgress = completerProgress.stages[stage.id];
+                            return stageProgress && stageProgress.evidencePhoto;
+                        });
+                    }
+                    // Check for evidence in regular quest progress
+                    if (!hasEvidence && completerProgress.evidencePhoto) {
+                        hasEvidence = true;
                     }
                 }
                 
@@ -8473,7 +8491,22 @@
                         if (mailTabActive()) renderMail();
                     }});
                 } else {
-                    buttons.push({ label: 'VIEW EVIDENCE', action: () => { if (p.evidencePhoto) viewEvidencePhoto(p.evidencePhoto); else showNotification('NO EVIDENCE PHOTO'); } });
+                    buttons.push({ label: 'VIEW EVIDENCE', action: () => { 
+                        if (p.evidencePhoto) {
+                            viewEvidencePhoto(p.evidencePhoto);
+                        } else if (completerProgress) {
+                            // v0.226: Look up evidence from quest progress
+                            if (completerProgress.stages && quest.stages) {
+                                viewMultiStageEvidence(quest, completerProgress);
+                            } else if (completerProgress.evidencePhoto) {
+                                viewEvidencePhoto(completerProgress.evidencePhoto);
+                            } else {
+                                showNotification('NO EVIDENCE PHOTO');
+                            }
+                        } else {
+                            showNotification('NO EVIDENCE PHOTO');
+                        }
+                    } });
                     buttons.push({ label: 'VERIFY COMPLETION', color: '#39ff14', action: () => { verifyQuestFromMail(key, l); } });
                     buttons.push({ label: 'REJECT', color: '#ff3333', action: () => { rejectQuestFromMail(key, l); } });
                     buttons.push({ label: 'DISMISS', action: () => { 
@@ -8486,6 +8519,10 @@
                 if (p.evidencePhoto) {
                     const img = document.getElementById('cp-img');
                     if (img) { img.src = p.evidencePhoto; img.style.display = 'block'; }
+                } else if (hasEvidence) {
+                    // v0.226: Show evidence indicator when photo is in quest progress
+                    const img = document.getElementById('cp-img');
+                    if (img) { img.style.display = 'none'; }
                 }
             } else if (l.type === 'item') {
                 const p = l.payload || {};
