@@ -3192,8 +3192,31 @@
                     playSound('level-up');
                     
                     if (allStagesCompleted) {
-                        showQuestStatusModal('completed', q.title || 'UNKNOWN');
-                        sendMultiStageVerificationRequest(questId);
+                        // v0.229: Check if all stages are bounty type (auto-verify, no issuer verification needed)
+                        const allBountyStages = stages.every(s => s.type === 'bounty');
+                        
+                        if (allBountyStages) {
+                            // Auto-verify bounty-only quests (scan = proof)
+                            updates.status = 'verified';
+                            updates.verifiedAt = Date.now();
+                            updates.verifiedBy = 'auto';
+                            updates.verifiedByName = 'AUTO-VERIFIED (BOUNTY SCAN)';
+                            
+                            const verifyRef = window.firebaseRef(window.db, `quests/${questId}/progress/${myUid}`);
+                            window.firebaseUpdate(verifyRef, {
+                                status: 'verified',
+                                verifiedAt: Date.now(),
+                                verifiedBy: 'auto',
+                                verifiedByName: 'AUTO-VERIFIED (BOUNTY SCAN)'
+                            }).then(() => {
+                                showQuestStatusModal('verified', q.title || 'UNKNOWN', 'All bounty stages scanned');
+                                playSound('levelUp');
+                            });
+                        } else {
+                            // Has photo/other stages - needs issuer verification
+                            showQuestStatusModal('completed', q.title || 'UNKNOWN');
+                            sendMultiStageVerificationRequest(questId);
+                        }
                     } else {
                         showNotification(`STAGE ${stageIdx + 1} COMPLETED - STAGE ${stageIdx + 2} UNLOCKED`);
                         // Re-open modal to show next stage
