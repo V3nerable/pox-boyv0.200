@@ -7069,7 +7069,6 @@
                 document.body.removeChild(a);
             }
         }
-        }
 
         function exportEntry(entry) {
             const stamp = Date.now();
