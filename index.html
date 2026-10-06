@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.230</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.232</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -560,7 +560,7 @@
     </div>
 
     <!-- UNIFIED QUEST CREATION MODAL (v0.225) -->
-    <div id="create-quest-modal" class="modal-overlay" style="z-index: 125;">
+    <div id="create-quest-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3 id="cq-modal-title">CREATE QUEST</h3>
             <div class="form-group"><label>TITLE</label><input type="text" id="new-quest-title" class="pip-input vk-target" readonly onclick="openVk('new-quest-title')" maxlength="100" placeholder="Quest title..."></div>
@@ -698,7 +698,7 @@
     </div>
 
     <!-- QUICK CAMERA OVERLAY MODAL (v0.225) -->
-    <div id="quick-cam-modal" class="modal-overlay" style="z-index: 1001; background: var(--pip-bg);">
+    <div id="quick-cam-modal" class="modal-overlay" style="z-index: 1001; position: fixed; background: var(--pip-bg);">
         <div class="modal-content" style="width: 100%; height: 100vh; max-width: 100%; border: none; padding: 20px; display: flex; flex-direction: column; position: relative;">
             <h3 style="text-align: center; margin-bottom: 20px; flex-shrink: 0; z-index: 10;">📷 SNAP EVIDENCE PHOTO</h3>
             
@@ -804,7 +804,7 @@
     </div>
 
     <!-- QR CODE SCANNER MODAL -->
-    <div id="qr-scan-modal" class="modal-overlay" style="z-index: 1000; background: var(--pip-bg);">
+    <div id="qr-scan-modal" class="modal-overlay" style="z-index: 1000; position: fixed; background: var(--pip-bg);">
         <div class="modal-content" style="width: 100%; height: 100vh; max-width: 100%; border: none; padding: 20px; display: flex; flex-direction: column;">
             <h3 style="text-align: center; margin-bottom: 20px;">SCANNING DATA TRANSFER</h3>
             
@@ -818,7 +818,7 @@
     </div>
 
     <!-- QR CODE DISPLAY MODAL -->
-    <div id="qr-display-modal" class="modal-overlay" style="z-index: 1000; background: var(--pip-bg);">
+    <div id="qr-display-modal" class="modal-overlay" style="z-index: 1000; position: fixed; background: var(--pip-bg);">
         <div class="modal-content" style="width: 100%; height: 100vh; max-width: 100%; border: none; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
             <h3 style="text-align: center; margin-bottom: 20px;">BROADCASTING DATA</h3>
             <p style="text-align: center; opacity: 0.8; margin-bottom: 20px;">Have another Wastelander scan this code with their Pox-Boy scanner.</p>

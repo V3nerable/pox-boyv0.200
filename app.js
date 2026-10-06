@@ -7129,10 +7129,17 @@
         function exportAllPhotos() {
             if (!photoArchive.length) return showNotification('DATABANK EMPTY.');
             
-            // v0.213: Show export dialog with options
+            // v0.231: Show export dialog with options including reset
             showCustomPrompt('EXPORT PHOTOS', [
                 { label: 'EXPORT ALL (' + photoArchive.length + ' photos)', action: () => exportPhotosWithDedup(true) },
                 { label: 'EXPORT NEW ONLY', action: () => exportPhotosWithDedup(false) },
+                { label: 'RESET EXPORT HISTORY', color: '#ffb642', action: () => {
+                    exportedPhotoHashes = [];
+                    localStorage.setItem('pipboy-exported-hashes', '[]');
+                    lastPhotoExport = 0;
+                    localStorage.setItem('pipboy-last-photo-export', '0');
+                    showNotification('EXPORT HISTORY CLEARED - ALL PHOTOS WILL EXPORT NEXT TIME');
+                }},
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
         }
@@ -7297,6 +7304,16 @@
                     label: "YES, DELETE",
                     color: "#ff3333",
                     action: () => {
+                        // v0.231: Remove hash from export tracking before deleting
+                        const photo = photoArchive[idx];
+                        if (photo) {
+                            const hash = getPhotoHash(photo);
+                            if (hash) {
+                                exportedPhotoHashes = exportedPhotoHashes.filter(h => h !== hash);
+                                localStorage.setItem('pipboy-exported-hashes', JSON.stringify(exportedPhotoHashes));
+                            }
+                        }
+                        
                         photoArchive.splice(idx, 1);
                         // v0.210: Save to IndexedDB (or localStorage fallback)
                         if (typeof savePhotoArchive === 'function') {
@@ -7326,6 +7343,16 @@
                     label: "YES, DELETE",
                     color: "#ff3333",
                     action: () => {
+                        // v0.231: Remove hash from export tracking before deleting
+                        const photo = photoArchive[idx];
+                        if (photo) {
+                            const hash = getPhotoHash(photo);
+                            if (hash) {
+                                exportedPhotoHashes = exportedPhotoHashes.filter(h => h !== hash);
+                                localStorage.setItem('pipboy-exported-hashes', JSON.stringify(exportedPhotoHashes));
+                            }
+                        }
+                        
                         photoArchive.splice(idx, 1);
                         // v0.210: Save to IndexedDB (or localStorage fallback)
                         if (typeof savePhotoArchive === 'function') {

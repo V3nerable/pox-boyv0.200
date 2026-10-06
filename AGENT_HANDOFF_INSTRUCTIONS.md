@@ -339,3 +339,43 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 - Create a bounty quest with Player A, have Player B accept and complete it (scan target)
 - Have Player C try to accept the same bounty - should see "BOUNTY ALREADY CLAIMED" error
 - Verify bounty shows as claimed in quest details for all players
+
+### v0.231 - Modal Z-Index Stacking Fix
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Fixed modal stacking issue** - Bounty target picker modal was appearing behind quest creation modal and was unselectable
+   - Root cause: `create-quest-modal`, `qr-scan-modal`, `qr-display-modal`, and `quick-cam-modal` were using `position: absolute` while `custom-prompt-modal` used `position: fixed`
+   - This caused z-index stacking context issues where lower z-index modals with `position: absolute` could appear on top of higher z-index modals with `position: fixed`
+   - Fixed by adding `position: fixed` to: `create-quest-modal` (z-index 125), `qr-scan-modal` (z-index 1000), `qr-display-modal` (z-index 1000), `quick-cam-modal` (z-index 1001)
+   - Now all high-priority modals use `position: fixed` like `custom-prompt-modal` (z-index 2002) and `keyboard-modal` (z-index 2003)
+
+**Technical Details:**
+- Modals with `position: absolute` create stacking contexts relative to their positioned ancestor
+- Modals with `position: fixed` create stacking contexts relative to the viewport
+- When mixed, z-index comparisons don't work as expected
+- All overlay modals now consistently use `position: fixed` for proper stacking
+
+**Cache version:** Bumped to v220
+
+### v0.232 - Databank Export Tracking Fix
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Fixed photo export deduplication issue** - Photos marked as "already exported" even when new photos were saved
+   - Root cause: When photos were deleted from databank, their hashes remained in `exportedPhotoHashes` array in localStorage
+   - If a similar photo was added later (or same photo retaken), it would be skipped as a "duplicate"
+   - This persisted after reinstall because localStorage persists
+   - Fixed by removing photo hash from `exportedPhotoHashes` when photo is deleted via `deletePhoto()` or `deleteViewerPhoto()`
+2. **Added "RESET EXPORT HISTORY" option** to export menu
+   - Clears `exportedPhotoHashes` array and `lastPhotoExport` timestamp
+   - Allows users to re-export all photos if needed
+   - Useful for debugging or if export tracking gets out of sync
+
+**Technical Details:**
+- `deletePhoto()` and `deleteViewerPhoto()` now calculate hash of photo before deletion and remove it from `exportedPhotoHashes`
+- Export menu now has 4 options: EXPORT ALL, EXPORT NEW ONLY, RESET EXPORT HISTORY, CANCEL
+- Hash tracking uses first 100 characters of photo data URL for deduplication
+- localStorage keys: `pipboy-exported-hashes` (array), `pipboy-last-photo-export` (timestamp)
+
+**Cache version:** Bumped to v221
