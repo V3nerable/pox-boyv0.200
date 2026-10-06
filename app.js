@@ -5041,11 +5041,19 @@
                     const tile = document.createElement('img');
                     tile.crossOrigin = 'anonymous';
                     
+                    console.log('[SatelliteTileLayer] createTile called for zoom:', coords.z, 'x:', coords.x, 'y:', coords.y);
+                    
                     // For zoom 1-22, use normal tiles
                     if (coords.z <= 22) {
                         tile.src = this.getTileUrl(coords);
-                        tile.onload = function() { done(null, tile); };
-                        tile.onerror = function(e) { done(e, tile); };
+                        tile.onload = function() { 
+                            console.log('[SatelliteTileLayer] Normal tile loaded at zoom', coords.z);
+                            done(null, tile); 
+                        };
+                        tile.onerror = function(e) { 
+                            console.error('[SatelliteTileLayer] Normal tile error at zoom', coords.z, e);
+                            done(e, tile); 
+                        };
                         return tile;
                     }
                     
@@ -5060,6 +5068,8 @@
                     // Calculate which portion of the parent tile to show
                     const subX = coords.x % scale; // 0 to scale-1
                     const subY = coords.y % scale; // 0 to scale-1
+                    
+                    console.log('[SatelliteTileLayer] Zoom', coords.z, '- using parent tile at zoom 22:', parentX, parentY, 'sub-region:', subX, subY);
                     
                     // Load parent tile
                     const parentUrl = this.getTileUrl({x: parentX, y: parentY, z: 22});
@@ -5084,10 +5094,12 @@
                         
                         // Convert canvas to data URL and set as tile source
                         tile.src = canvas.toDataURL();
+                        console.log('[SatelliteTileLayer] Stretched tile created for zoom', coords.z);
                         done(null, tile);
                     };
                     
                     parentImg.onerror = function(e) {
+                        console.error('[SatelliteTileLayer] Parent tile error:', e);
                         done(e, tile);
                     };
                     
@@ -5096,10 +5108,10 @@
                 }
             });
             
+            // v0.243: Don't set maxNativeZoom - let our custom createTile handle all zoom levels
             satelliteTileLayer = new SatelliteTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                maxZoom: 24,
-                maxNativeZoom: 22
+                maxZoom: 24
             });
             
             // Add dark tiles by default
