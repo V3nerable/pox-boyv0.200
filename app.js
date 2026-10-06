@@ -5035,9 +5035,70 @@
                 maxZoom: 21
             });
             
-            satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            // v0.243: Custom tile layer that stretches zoom 22 tiles for zoom 23-24
+            const SatelliteTileLayer = L.TileLayer.extend({
+                createTile: function(coords, done) {
+                    const tile = document.createElement('img');
+                    tile.crossOrigin = 'anonymous';
+                    
+                    // For zoom 1-22, use normal tiles
+                    if (coords.z <= 22) {
+                        tile.src = this.getTileUrl(coords);
+                        tile.onload = function() { done(null, tile); };
+                        tile.onerror = function(e) { done(e, tile); };
+                        return tile;
+                    }
+                    
+                    // For zoom 23-24, calculate parent tile at zoom 22 and crop
+                    const zoomDiff = coords.z - 22; // 1 or 2
+                    const scale = Math.pow(2, zoomDiff); // 2 or 4
+                    
+                    // Calculate parent tile coordinates at zoom 22
+                    const parentX = Math.floor(coords.x / scale);
+                    const parentY = Math.floor(coords.y / scale);
+                    
+                    // Calculate which portion of the parent tile to show
+                    const subX = coords.x % scale; // 0 to scale-1
+                    const subY = coords.y % scale; // 0 to scale-1
+                    
+                    // Load parent tile
+                    const parentUrl = this.getTileUrl({x: parentX, y: parentY, z: 22});
+                    const parentImg = new Image();
+                    parentImg.crossOrigin = 'anonymous';
+                    
+                    parentImg.onload = function() {
+                        // Create canvas to crop and scale
+                        const canvas = document.createElement('canvas');
+                        const tileSize = 256;
+                        canvas.width = tileSize;
+                        canvas.height = tileSize;
+                        const ctx = canvas.getContext('2d');
+                        
+                        // Calculate source region from parent tile
+                        const srcSize = tileSize / scale;
+                        const srcX = subX * srcSize;
+                        const srcY = subY * srcSize;
+                        
+                        // Draw cropped and scaled portion
+                        ctx.drawImage(parentImg, srcX, srcY, srcSize, srcSize, 0, 0, tileSize, tileSize);
+                        
+                        // Convert canvas to data URL and set as tile source
+                        tile.src = canvas.toDataURL();
+                        done(null, tile);
+                    };
+                    
+                    parentImg.onerror = function(e) {
+                        done(e, tile);
+                    };
+                    
+                    parentImg.src = parentUrl;
+                    return tile;
+                }
+            });
+            
+            satelliteTileLayer = new SatelliteTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                maxZoom: 23,
+                maxZoom: 24,
                 maxNativeZoom: 22
             });
             
