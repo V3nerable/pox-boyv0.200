@@ -1765,6 +1765,15 @@
 
         // Custom in-app confirmation replacement
         function showCustomPrompt(text, buttons) {
+            // v0.240: Hide all other modals to ensure custom-prompt is on top
+            const allModals = document.querySelectorAll('.modal-overlay');
+            allModals.forEach(modal => {
+                if (modal.id !== 'custom-prompt-modal' && modal.style.display !== 'none') {
+                    modal.style.display = 'none';
+                    modal.dataset.wasVisible = 'true';
+                }
+            });
+            
             // v0.45: the shared prompt can carry an image (mail photo viewer) — reset it
             // on every open so an old photo never bleeds into an unrelated query
             const cpImg = document.getElementById('cp-img');
@@ -4646,6 +4655,15 @@
         function closeCustomPrompt() {
             const m = document.getElementById('custom-prompt-modal');
             if (m) { m.style.display = 'none'; m.classList.remove('active'); }
+            
+            // v0.240: Restore modals that were hidden when custom-prompt opened
+            const allModals = document.querySelectorAll('.modal-overlay');
+            allModals.forEach(modal => {
+                if (modal.dataset.wasVisible === 'true') {
+                    modal.style.display = 'flex';
+                    delete modal.dataset.wasVisible;
+                }
+            });
         }
 
         function closeModals() { 

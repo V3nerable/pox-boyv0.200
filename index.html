@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.238</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.240</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -370,7 +370,7 @@
             <div id="cam-menu-state" style="flex-grow: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--pip-color); padding-bottom: 10px; margin-bottom: 15px; flex-shrink: 0; flex-wrap: wrap; gap: 10px;">
                     <h2 style="font-size: 1.5rem; margin: 0;">IMAGE DATABANK</h2>
-                    <button class="pip-btn" id="cam-exportall-btn" onclick="exportAllPhotos()" style="margin: 0; padding: 5px 15px; border-style: dashed; font-weight: bold; white-space: nowrap; width: auto; flex-shrink: 0; border-color: #42b6ff; color: #42b6ff;">[⇪ EXPORT ALL]</button>
+                    <button class="pip-btn" id="cam-exportall-btn" onclick="exportAllPhotos()" style="margin: 0; padding: 5px 15px; border-style: dashed; font-weight: bold; white-space: nowrap; width: auto; flex-shrink: 0; border-color: #42b6ff; color: #42b6ff; display: none;">[⇪ EXPORT ALL]</button>
                     <button class="pip-btn" id="cam-start-btn" onclick="startCamera()" style="margin: 0; padding: 5px 15px; border-style: dashed; font-weight: bold; white-space: nowrap; width: auto; flex-shrink: 0;">[ POWER ON SENSOR ]</button>
                 </div>
                 
@@ -886,7 +886,7 @@
     </div>
 
     <!-- CUSTOM CONFIRM/PROMPT MODAL -->
-    <div id="custom-prompt-modal" class="modal-overlay" style="z-index: 2002;">
+    <div id="custom-prompt-modal" class="modal-overlay" style="z-index: 2002; position: fixed;">
         <div class="modal-content pulse-alert" style="border: 2px dashed var(--pip-color); text-align: center;">
             <h3 id="cp-title">SYSTEM QUERY</h3>
             <!-- v0.45: optional image slot (mail photo viewer); hidden/reset per open -->
