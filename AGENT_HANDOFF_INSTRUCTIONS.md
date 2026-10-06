@@ -314,5 +314,28 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 
 *   **v0.227:** THREE FIXES: QUEST ACCEPTED OVERLAP, SATELLITE ZOOM, DIRECT QUEST FORMAT. (1) **QUEST ACCEPTED MODAL OVERLAP:** Removed `showNotification('QUEST ACCEPTED')` from `acceptMultiStageQuest()` before `openMultiStageQuestModal()` — the notification modal was overlapping with the quest details modal. Now just plays lunchbox sound and opens the quest details directly. (2) **SATELLITE ZOOM:** Increased both tile layer maxZoom from 16/19 to 21 (dark and satellite). Allows zooming further in on satellite imagery in overseer display. Tiles overzoom (stretch) beyond native resolution but remain usable. (3) **DIRECT QUEST FORMAT:** `composeTo('quest', uid)` now opens the multi-stage quest creation form instead of the old compose-quest-modal (title/brief/objectives format). Shows "DIRECT QUEST TO: [name]" indicator. `submitMultiStageQuest()` now checks for `window.pendingDirectQuestRecipient` and sends quest-offer mail with questId after creating the quest in Firebase. Quest data includes `assignedTo` field. `acceptQuestFromMail()` now initializes stage progress for multi-stage quests (was only setting basic accepted/status fields). Cache bumped to pipboy-cache-v216.
 
+*   **v0.229:** MULTI-STAGE BOUNTY AUTO-VERIFY. Fixed bounty-only multi-stage quests going to "AWAITING VERIFICATION" instead of auto-verifying on scan. Root cause: `completeMultiStageStage()` always sent a verify-request mail to the issuer when all stages completed, regardless of stage type. For bounty stages, the scan IS the proof (same as regular bounty quests which already auto-verify via `completeBountyByScan()`). Fix: After all stages complete, check if ALL stages are bounty type. If yes, auto-verify the quest (status='verified', verifiedBy='auto', verifiedByName='AUTO-VERIFIED (BOUNTY SCAN)'), play levelUp sound, show verified status modal. If any stage is photo or other type, still send verify-request mail as before (issuer needs to verify photo evidence). Cache bumped to pipboy-cache-v218.
+
 *   **v0.228:** BOUNTY SCAN CAMERA FIX. Fixed multi-stage bounty stages not opening QR scanner modal. Root cause: `scanMultiStageBountyTarget()` was switching to SCAN tab via `switchMainTab('scan')` instead of opening the QR scanner modal directly. This caused the scanner not to appear properly. Fix: Changed to open `qr-scan-modal` directly and call `startQRScanner()` (same approach as regular bounty scan via `scanBountyTarget()`). Flow: user taps "SCAN BOUNTY TARGET" → QR scanner modal opens → user scans target's datacard → scanner closes → stage completes with scan UID as evidence. Cache bumped to pipboy-cache-v217.
 
+
+### v0.230 - Bounty Claiming System & Modal Fixes
+**Date:** 2026-01-XX
+
+**Changes:**
+1. **Bounty Target Modal Z-Index Fix** - Fixed bounty target picker modal appearing behind quest creation modal by ensuring `closeCustomPrompt()` is called after selection
+2. **Global Bounty Claiming System** - Bounties are now globally exclusive: once claimed by one player, no other player can claim the same bounty
+   - When a bounty stage is completed (via scan), the quest status is set to `bounty_claimed` with the claimer's UID/name/timestamp
+   - Other players attempting to accept or complete the bounty see "BOUNTY ALREADY CLAIMED BY [name]" error with Johnny Guitar failure sound
+   - Applies to both regular bounty quests and multi-stage quests with bounty stages
+   - Checks added to: `acceptQuest()`, `acceptMultiStageQuest()`, `acceptQuestFromMail()`, `completeMultiStageStage()`, `completeBountyByScan()`
+
+**Technical Details:**
+- Quest-level fields added: `status: 'bounty_claimed'`, `bountyClaimedBy`, `bountyClaimedByName`, `bountyClaimedAt`
+- Firebase updates now use `Promise.all()` to update both quest-level status and user progress atomically
+- Cache version bumped to v219
+
+**Testing:**
+- Create a bounty quest with Player A, have Player B accept and complete it (scan target)
+- Have Player C try to accept the same bounty - should see "BOUNTY ALREADY CLAIMED" error
+- Verify bounty shows as claimed in quest details for all players

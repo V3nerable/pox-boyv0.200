@@ -2383,6 +2383,7 @@
                         const hiddenEl = document.getElementById('edit-stage-target');
                         if (displayEl) displayEl.value = c.name;
                         if (hiddenEl) hiddenEl.value = c.uid;
+                        closeCustomPrompt(); // v0.230: Close picker after selection
                     }
                 });
             });
@@ -2400,6 +2401,7 @@
                             const hiddenEl = document.getElementById('edit-stage-target');
                             if (displayEl) displayEl.value = name;
                             if (hiddenEl) hiddenEl.value = uid;
+                            closeCustomPrompt(); // v0.230: Close picker after selection
                         }
                     });
                 }
@@ -2410,7 +2412,7 @@
                 return;
             }
             
-            buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
+            buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => { closeCustomPrompt(); } });
             showCustomPrompt('SELECT BOUNTY TARGET:', buttons);
         }
         
@@ -2961,6 +2963,14 @@
             const q = firebaseQuests[id];
             if (!q) return;
             
+            // v0.230: Check if bounty already claimed by another player
+            const hasBountyStage = (q.stages || []).some(s => s.type === 'bounty');
+            if (hasBountyStage && q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
+                showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
+                playSound('johnnyGuitar');
+                return;
+            }
+            
             const stages = q.stages || [];
             const stageProgress = {};
             stages.forEach((stage, idx) => {
@@ -3146,6 +3156,13 @@
                 return;
             }
             
+            // v0.230: Check if bounty stage already claimed by another player
+            if (stage.type === 'bounty' && q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
+                showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
+                playSound('johnnyGuitar');
+                return;
+            }
+            
             // Build update object
             const updates = {};
             const stageUpdate = {
@@ -3160,6 +3177,16 @@
             
             updates[`stages/${stage.id}`] = stageUpdate;
             console.log('[Multi-Stage] Stage update:', JSON.stringify(updates));
+            
+            // v0.230: Mark bounty stages as globally claimed
+            const questUpdates = {};
+            if (stage.type === 'bounty') {
+                questUpdates.status = 'bounty_claimed';
+                questUpdates.bountyClaimedBy = myUid;
+                questUpdates.bountyClaimedByName = userProfile.name || 'UNKNOWN';
+                questUpdates.bountyClaimedAt = Date.now();
+                console.log('[Multi-Stage] Bounty stage completed, marking as globally claimed');
+            }
             
             // Check if all stages completed
             const allStagesCompleted = stages.every((s, idx) => {
@@ -3186,7 +3213,15 @@
             const progRef = window.firebaseRef(window.db, `quests/${questId}/progress/${myUid}`);
             console.log('[Multi-Stage] Updating Firebase path:', `quests/${questId}/progress/${myUid}`);
             
-            window.firebaseUpdate(progRef, updates)
+            // v0.230: Update both quest-level status (for bounty claiming) and user progress
+            const questRef = window.firebaseRef(window.db, `quests/${questId}`);
+            const updatePromises = [];
+            if (Object.keys(questUpdates).length > 0) {
+                updatePromises.push(window.firebaseUpdate(questRef, questUpdates));
+            }
+            updatePromises.push(window.firebaseUpdate(progRef, updates));
+            
+            Promise.all(updatePromises)
                 .then(() => {
                     console.log('[Multi-Stage] Firebase update successful');
                     playSound('level-up');
@@ -3473,6 +3508,14 @@
             const myUid = myMailUid; // Use myMailUid instead of localStorage
             const myName = userProfile.name || 'UNKNOWN';
             const q = firebaseQuests[id];
+            
+            // v0.230: Check if bounty already claimed by another player
+            if (q && q.type === 'bounty' && q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
+                showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
+                playSound('johnnyGuitar');
+                return;
+            }
+            
             const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
             window.firebaseSet(progRef, {
                 acceptedAt: Date.now(),
@@ -3924,6 +3967,13 @@
                     return;
                 }
                 
+                // v0.230: Check if bounty already claimed by another player
+                if (q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
+                    showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
+                    playSound('johnnyGuitar');
+                    return;
+                }
+                
                 // v0.175: Bounty scan = auto-verify (scan is sufficient proof)
                 const updates = {
                     status: 'verified',
@@ -3941,8 +3991,22 @@
                     window.pendingQuestPhoto = null;
                 }
                 
+                // v0.230: Mark bounty as globally claimed
+                const questRef = window.firebaseRef(window.db, `quests/${id}`);
+                const questUpdates = {
+                    status: 'bounty_claimed',
+                    bountyClaimedBy: myUid,
+                    bountyClaimedByName: myName,
+                    bountyClaimedAt: Date.now()
+                };
+                
                 const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
-                window.firebaseUpdate(progRef, updates)
+                
+                // Update both quest-level and user progress
+                Promise.all([
+                    window.firebaseUpdate(questRef, questUpdates),
+                    window.firebaseUpdate(progRef, updates)
+                ])
                     .then(() => {
                         closeCustomPrompt();
                         showNotification('☠ BOUNTY CLAIMED & VERIFIED');
@@ -8610,6 +8674,15 @@
             const quest = firebaseQuests[questId];
             if (!quest) {
                 showNotification('QUEST NOT FOUND - MAY HAVE BEEN CANCELLED');
+                declineLetter(key);
+                return;
+            }
+            
+            // v0.230: Check if bounty already claimed by another player
+            const hasBountyStage = (quest.stages || []).some(s => s.type === 'bounty');
+            if ((quest.type === 'bounty' || hasBountyStage) && quest.status === 'bounty_claimed' && quest.bountyClaimedBy !== myUid) {
+                showNotification('BOUNTY ALREADY CLAIMED BY ' + (quest.bountyClaimedByName || 'ANOTHER WASTELANDER'));
+                playSound('johnnyGuitar');
                 declineLetter(key);
                 return;
             }
