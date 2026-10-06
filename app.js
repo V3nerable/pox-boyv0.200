@@ -5035,7 +5035,8 @@
                 maxZoom: 21
             });
             
-            // v0.243: Custom tile layer that stretches zoom 22 tiles for zoom 23-24
+            // v0.244: Custom tile layer that stretches zoom 17 tiles for zoom 18+
+            // ArcGIS tiles have watermarks/overlays at zoom 18+, so we use zoom 17 as base
             const SatelliteTileLayer = L.TileLayer.extend({
                 createTile: function(coords, done) {
                     const tile = document.createElement('img');
@@ -5043,8 +5044,8 @@
                     
                     console.log('[SatelliteTileLayer] createTile called for zoom:', coords.z, 'x:', coords.x, 'y:', coords.y);
                     
-                    // For zoom 1-22, use normal tiles
-                    if (coords.z <= 22) {
+                    // For zoom 1-17, use normal tiles (no watermarks)
+                    if (coords.z <= 17) {
                         tile.src = this.getTileUrl(coords);
                         tile.onload = function() { 
                             console.log('[SatelliteTileLayer] Normal tile loaded at zoom', coords.z);
@@ -5057,11 +5058,11 @@
                         return tile;
                     }
                     
-                    // For zoom 23-24, calculate parent tile at zoom 22 and crop
-                    const zoomDiff = coords.z - 22; // 1 or 2
-                    const scale = Math.pow(2, zoomDiff); // 2 or 4
+                    // For zoom 18+, calculate parent tile at zoom 17 and crop
+                    const zoomDiff = coords.z - 17; // 1, 2, 3, 4, 5, 6, or 7
+                    const scale = Math.pow(2, zoomDiff); // 2, 4, 8, 16, 32, 64, or 128
                     
-                    // Calculate parent tile coordinates at zoom 22
+                    // Calculate parent tile coordinates at zoom 17
                     const parentX = Math.floor(coords.x / scale);
                     const parentY = Math.floor(coords.y / scale);
                     
@@ -5069,10 +5070,10 @@
                     const subX = coords.x % scale; // 0 to scale-1
                     const subY = coords.y % scale; // 0 to scale-1
                     
-                    console.log('[SatelliteTileLayer] Zoom', coords.z, '- using parent tile at zoom 22:', parentX, parentY, 'sub-region:', subX, subY);
+                    console.log('[SatelliteTileLayer] Zoom', coords.z, '- using parent tile at zoom 17:', parentX, parentY, 'sub-region:', subX, subY, 'scale:', scale);
                     
                     // Load parent tile
-                    const parentUrl = this.getTileUrl({x: parentX, y: parentY, z: 22});
+                    const parentUrl = this.getTileUrl({x: parentX, y: parentY, z: 17});
                     const parentImg = new Image();
                     parentImg.crossOrigin = 'anonymous';
                     
@@ -5094,7 +5095,7 @@
                         
                         // Convert canvas to data URL and set as tile source
                         tile.src = canvas.toDataURL();
-                        console.log('[SatelliteTileLayer] Stretched tile created for zoom', coords.z);
+                        console.log('[SatelliteTileLayer] Stretched tile created for zoom', coords.z, '(from zoom 17)');
                         done(null, tile);
                     };
                     
@@ -5108,7 +5109,7 @@
                 }
             });
             
-            // v0.243: Don't set maxNativeZoom - let our custom createTile handle all zoom levels
+            // v0.244: Use zoom 17 as base (last good zoom without watermarks)
             satelliteTileLayer = new SatelliteTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
                 maxZoom: 24
