@@ -11861,6 +11861,19 @@
                     "{users} just took their {count}th photo. The databank is filling up with memories. Most of them involving radiation and regret.",
                     "Click. {users} captured their {count}th wasteland moment. The camera never lies, but it does glow in the dark.",
                     "The shutter clicked for the {count}th time as {users} documented their descent into madness. Or just their vacation. Hard to tell."
+                ],
+                // v0.252: Fluff events for live chronicle
+                fluffZone: [
+                    "{narrative}",
+                ],
+                fluffSocial: [
+                    "{narrative}",
+                ],
+                fluffLocation: [
+                    "{narrative}",
+                ],
+                fluffMovement: [
+                    "{narrative}",
                 ]
             };
             
@@ -11877,6 +11890,7 @@
             const dose = mainEvent.data?.dose || 0;
             const contactName = mainEvent.data?.contactName || 'someone';
             const count = mainEvent.data?.count || 0;
+            const narrative = mainEvent.data?.narrative || '';
             
             return template
                 .replace(/{users}/g, userNames)
@@ -11886,7 +11900,8 @@
                 .replace(/{distance}/g, distance)
                 .replace(/{dose}/g, dose)
                 .replace(/{contactName}/g, contactName)
-                .replace(/{count}/g, count);
+                .replace(/{count}/g, count)
+                .replace(/{narrative}/g, narrative);
         }
         
         function saveChronicleEntry(entry) {
@@ -12006,6 +12021,187 @@
         // Initialize chronicle system
         if (localStorage.getItem('pipboy-dev-mode') === 'true') {
             startChronicleListener();
+            // v0.252: Start fluff event generation for live chronicle demo
+            startFluffEventGeneration();
+        }
+        
+        // v0.252: Generate ambient "fluff" events for live wasteland chronicle
+        function startFluffEventGeneration() {
+            // Generate demo players for testing
+            generateDemoPlayers();
+            
+            // Run every 60 seconds
+            setInterval(() => {
+                if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                    generateFluffEvents();
+                }
+            }, 60000);
+            
+            // Generate initial events immediately
+            setTimeout(generateFluffEvents, 2000);
+        }
+        
+        function generateDemoPlayers() {
+            if (!window.db) return;
+            
+            // Create 10 demo players with random positions around Perth
+            const baseLat = -31.9505;
+            const baseLng = 115.8605;
+            
+            for (let i = 1; i <= 10; i++) {
+                const uid = `demo-player-${i}`;
+                const lat = baseLat + (Math.random() - 0.5) * 0.02; // ~2km radius
+                const lng = baseLng + (Math.random() - 0.5) * 0.02;
+                
+                const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
+                window.firebaseSet(playerRef, {
+                    name: `Player ${i}`,
+                    lat: lat,
+                    lng: lng,
+                    timestamp: Date.now(),
+                    hp: 80 + Math.floor(Math.random() * 20),
+                    rads: Math.floor(Math.random() * 300),
+                    radsLifetime: Math.floor(Math.random() * 1000),
+                    mutations: Math.floor(Math.random() * 5),
+                    photosTaken: Math.floor(Math.random() * 20),
+                    isDemo: true
+                });
+            }
+        }
+        
+        function generateFluffEvents() {
+            if (!window.db) return;
+            
+            // Fetch current wastelanders, zones, pins, waypoints
+            Promise.all([
+                window.firebaseGet(window.firebaseRef(window.db, 'wastelanders')),
+                window.firebaseGet(window.firebaseRef(window.db, 'radzones')),
+                window.firebaseGet(window.firebaseRef(window.db, 'sharedpins'))
+            ]).then(([wastelandersSnap, zonesSnap, pinsSnap]) => {
+                const wastelanders = wastelandersSnap.val() || {};
+                const zones = zonesSnap.val() || {};
+                const pins = pinsSnap.val() || {};
+                
+                const now = Date.now();
+                const fiveMinutesAgo = now - 300000;
+                
+                // Get active players (seen in last 5 minutes)
+                const activePlayers = Object.entries(wastelanders)
+                    .filter(([uid, w]) => w.timestamp >= fiveMinutesAgo && !isTestAccount(w.name))
+                    .map(([uid, w]) => ({ uid, ...w }));
+                
+                // Generate 1 event per active player
+                activePlayers.forEach(player => {
+                    const event = generatePlayerEvent(player, activePlayers, zones, pins);
+                    if (event) {
+                        logChronicleEvent(event.type, player.uid, player.name, event.data);
+                    }
+                });
+            }).catch(err => {
+                console.error('Error generating fluff events:', err);
+            });
+        }
+        
+        function generatePlayerEvent(player, allPlayers, zones, pins) {
+            const playerLat = player.lat;
+            const playerLng = player.lng;
+            
+            if (!playerLat || !playerLng) return null;
+            
+            // Check proximity to zones (25m threshold)
+            for (const [zoneId, zone] of Object.entries(zones)) {
+                if (zone.lat && zone.lng) {
+                    const distance = getDistance(playerLat, playerLng, zone.lat, zone.lng);
+                    if (distance <= 25) {
+                        const zoneType = zone.type || 'unknown';
+                        const templates = {
+                            med: [
+                                `${player.name} seeks refuge near the medical outpost, their Geiger counter clicking softly.`,
+                                `The wounded ${player.name} stumbles toward medical aid, desperation in their eyes.`,
+                                `${player.name} approaches the healing grounds, hoping for salvation from the wasteland's cruelty.`
+                            ],
+                            rad: [
+                                `${player.name} ventures dangerously close to the irradiated wasteland, their skin tingling.`,
+                                `The brave ${player.name} tests the boundaries of the glowing zone, dosimeter climbing.`,
+                                `${player.name} dances at the edge of radiation, tempting fate with each step.`
+                            ],
+                            decon: [
+                                `${player.name} enters the decontamination zone, scrubbing away the wasteland's touch.`,
+                                `The cautious ${player.name} purifies themselves, washing away invisible threats.`,
+                                `${player.name} seeks cleansing in the decon zone, the hiss of sprays filling the air.`
+                            ]
+                        };
+                        
+                        const zoneTemplates = templates[zoneType] || templates.rad;
+                        const narrative = zoneTemplates[Math.floor(Math.random() * zoneTemplates.length)];
+                        
+                        return {
+                            type: 'fluffZone',
+                            data: { narrative, zoneType, zoneId }
+                        };
+                    }
+                }
+            }
+            
+            // Check proximity to other players (25m threshold)
+            for (const otherPlayer of allPlayers) {
+                if (otherPlayer.uid !== player.uid && otherPlayer.lat && otherPlayer.lng) {
+                    const distance = getDistance(playerLat, playerLng, otherPlayer.lat, otherPlayer.lng);
+                    if (distance <= 25) {
+                        const templates = [
+                            `${player.name} and ${otherPlayer.name} cross paths in the desolate landscape, exchanging wary glances.`,
+                            `Two wastelanders meet: ${player.name} and ${otherPlayer.name} share a moment of recognition.`,
+                            `${player.name} encounters ${otherPlayer.name} among the ruins, weapons at the ready.`,
+                            `The dust settles as ${player.name} and ${otherPlayer.name} find themselves face to face.`
+                        ];
+                        
+                        const narrative = templates[Math.floor(Math.random() * templates.length)];
+                        
+                        return {
+                            type: 'fluffSocial',
+                            data: { narrative, otherPlayer: otherPlayer.name }
+                        };
+                    }
+                }
+            }
+            
+            // Check proximity to shared pins (25m threshold)
+            for (const [pinId, pin] of Object.entries(pins)) {
+                if (pin.lat && pin.lng) {
+                    const distance = getDistance(playerLat, playerLng, pin.lat, pin.lng);
+                    if (distance <= 25) {
+                        const pinLabel = pin.label || 'marked location';
+                        const templates = [
+                            `${player.name} investigates ${pinLabel}, scanning for supplies or secrets.`,
+                            `The curious ${player.name} approaches ${pinLabel}, Pip-Boy at the ready.`,
+                            `${player.name} discovers ${pinLabel}, wondering who left this mark and why.`
+                        ];
+                        
+                        const narrative = templates[Math.floor(Math.random() * templates.length)];
+                        
+                        return {
+                            type: 'fluffLocation',
+                            data: { narrative, pinLabel }
+                        };
+                    }
+                }
+            }
+            
+            // Movement/idle events (fallback)
+            const movementTemplates = [
+                `${player.name} travels through the wasteland, boots crunching on broken concrete.`,
+                `The lone ${player.name} scans the horizon, searching for signs of life.`,
+                `${player.name} consults their Pip-Boy, plotting their next move through the desolation.`,
+                `Dust swirls around ${player.name} as they navigate the post-apocalyptic landscape.`,
+                `${player.name} pauses to catch their breath, the weight of survival heavy on their shoulders.`
+            ];
+            
+            const narrative = movementTemplates[Math.floor(Math.random() * movementTemplates.length)];
+            
+            return {
+                type: 'fluffMovement',
+                data: { narrative }
+            };
         }
 
         // v0.130: Overseer map control functions
