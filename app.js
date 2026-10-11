@@ -12092,6 +12092,9 @@
             
             console.log('[Chronicle] Fetching wastelanders, zones, and pins...');
             
+            // Update demo player timestamps to keep them "active"
+            updateDemoPlayerTimestamps();
+            
             // Fetch current wastelanders, zones, pins, waypoints
             Promise.all([
                 window.firebaseGet(window.firebaseRef(window.db, 'wastelanders')),
@@ -12135,6 +12138,23 @@
             }).catch(err => {
                 console.error('[Chronicle] Error generating fluff events:', err);
             });
+        }
+        
+        function updateDemoPlayerTimestamps() {
+            // Update all demo players to have current timestamp (keeps them "active")
+            for (let i = 1; i <= 10; i++) {
+                const uid = `demo-player-${i}`;
+                const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
+                
+                // Update timestamp and slightly randomize position to simulate movement
+                window.firebaseUpdate(playerRef, {
+                    timestamp: Date.now(),
+                    lat: -31.9505 + (Math.random() - 0.5) * 0.02,
+                    lng: 115.8605 + (Math.random() - 0.5) * 0.02
+                }).catch(err => {
+                    console.error(`[Chronicle] Error updating demo player ${i} timestamp:`, err);
+                });
+            }
         }
         
         function generatePlayerEvent(player, allPlayers, zones, pins) {
