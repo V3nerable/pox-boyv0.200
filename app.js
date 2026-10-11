@@ -11152,6 +11152,9 @@
                 // Render player list
                 renderOverseerPlayerList(filteredPlayers);
                 
+                // Render chronicle in overseer display
+                renderOverseerChronicle();
+                
                 // Map updates itself via its own Firebase listeners
                 
             }).catch(err => {
@@ -11716,6 +11719,11 @@
                 if (document.getElementById('tab-chronicle')?.classList.contains('active')) {
                     renderChronicle();
                 }
+                
+                // v0.251: Update overseer chronicle if overseer display is open
+                if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                    renderOverseerChronicle();
+                }
             });
             
             chronicleListenerActive = true;
@@ -11890,6 +11898,53 @@
         
         function renderChronicle() {
             const container = document.getElementById('chronicle-feed');
+            if (!container) return;
+            
+            if (chronicleEntries.length === 0) {
+                container.innerHTML = '<p style="opacity: 0.5; text-align: center;">The wasteland is quiet... for now.</p>';
+                return;
+            }
+            
+            let html = '<div class="chronicle-entries">';
+            
+            chronicleEntries.forEach(entry => {
+                const time = new Date(entry.timestamp).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                
+                const day = entry.day || 1;
+                
+                // Parse related photos
+                const photos = entry.relatedPhotos ? entry.relatedPhotos.split(',').filter(Boolean) : [];
+                let photoHtml = '';
+                if (photos.length > 0) {
+                    photoHtml = '<div class="chronicle-photos">';
+                    photos.forEach(photo => {
+                        photoHtml += `<img src="${photo}" style="max-width: 200px; max-height: 150px; margin: 5px; border: 2px solid var(--pip-color); border-radius: 4px;">`;
+                    });
+                    photoHtml += '</div>';
+                }
+                
+                html += `
+                    <div class="chronicle-entry" data-event-type="${entry.eventType}">
+                        <div class="chronicle-header">
+                            <span class="chronicle-time">[${time}]</span>
+                            <span class="chronicle-day">Day ${day}</span>
+                        </div>
+                        <div class="chronicle-narrative">${entry.narrative}</div>
+                        ${photoHtml}
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        // v0.251: Render chronicle in overseer display
+        function renderOverseerChronicle() {
+            const container = document.getElementById('overseer-chronicle-feed');
             if (!container) return;
             
             if (chronicleEntries.length === 0) {
