@@ -5035,73 +5035,12 @@
                 maxZoom: 21
             });
             
-            // v0.249: Custom tile layer that uses zoom 17 tiles for zoom 18+
-            // ArcGIS returns "map data not yet available" placeholders at zoom 18+
-            const SatelliteTileLayer = L.TileLayer.extend({
-                createTile: function(coords, done) {
-                    console.log('[SatelliteTileLayer] createTile called for zoom:', coords.z, 'x:', coords.x, 'y:', coords.y);
-                    
-                    // For zoom 1-17, use normal tiles (zoom 17 has actual data)
-                    if (coords.z <= 17) {
-                        const tile = document.createElement('img');
-                        tile.crossOrigin = 'anonymous';
-                        tile.src = this.getTileUrl(coords);
-                        tile.onload = function() { 
-                            console.log('[SatelliteTileLayer] Normal tile loaded at zoom', coords.z);
-                            done(null, tile); 
-                        };
-                        tile.onerror = function(e) { 
-                            console.error('[SatelliteTileLayer] Normal tile error at zoom', coords.z, e);
-                            done(e, tile); 
-                        };
-                        return tile;
-                    }
-                    
-                    // For zoom 18+, use zoom 17 tiles with CSS transform (zoom 18+ has placeholders)
-                    const zoomDiff = coords.z - 17; // 1, 2, 3, 4, 5, 6, or 7
-                    const scale = Math.pow(2, zoomDiff); // 2, 4, 8, 16, 32, 64, or 128
-                    
-                    // Calculate parent tile coordinates at zoom 17
-                    const parentX = Math.floor(coords.x / scale);
-                    const parentY = Math.floor(coords.y / scale);
-                    
-                    // Calculate which portion of the parent tile to show
-                    const subX = coords.x % scale; // 0 to scale-1
-                    const subY = coords.y % scale; // 0 to scale-1
-                    
-                    console.log('[SatelliteTileLayer] Zoom', coords.z, '- using parent tile at zoom 17:', parentX, parentY, 'sub-region:', subX, subY, 'scale:', scale);
-                    
-                    // Load parent tile directly (no canvas, no CORS issues)
-                    const parentUrl = this.getTileUrl({x: parentX, y: parentY, z: 17});
-                    const tile = document.createElement('img');
-                    tile.crossOrigin = 'anonymous';
-                    tile.src = parentUrl;
-                    
-                    // Apply CSS transform to show only the relevant portion
-                    // This crops and scales the parent tile to show the zoom 18+ area
-                    tile.style.transform = `scale(${scale})`;
-                    tile.style.transformOrigin = `${(subX + 0.5) * 100 / scale}% ${(subY + 0.5) * 100 / scale}%`;
-                    
-                    console.log('[SatelliteTileLayer] CSS transform applied: scale(' + scale + '), origin: ' + ((subX + 0.5) * 100 / scale) + '% ' + ((subY + 0.5) * 100 / scale) + '%');
-                    
-                    tile.onload = function() {
-                        console.log('[SatelliteTileLayer] ✓ Stretched tile loaded for zoom', coords.z, '(from zoom 17 via CSS transform)');
-                        done(null, tile);
-                    };
-                    
-                    tile.onerror = function(e) {
-                        console.error('[SatelliteTileLayer] Parent tile error:', e);
-                        done(e, tile);
-                    };
-                    
-                    return tile;
-                }
-            });
-            
-            // v0.249: Use zoom 17 as base (has actual data), stretch for zoom 18+ (has placeholders)
-            satelliteTileLayer = new SatelliteTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-                maxZoom: 24
+            // v0.250: Use Mapbox satellite tiles (zoom 22 support, no placeholders)
+            satelliteTileLayer = L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoidmVuc3dvcmtzaG9wIiwiYSI6ImNtdjRmYjNoMTB4aTcyeHFhdWR6NDlybnAifQ.svEmJtQmteI1WmnACGRZNA', {
+                attribution: '© Mapbox © OpenStreetMap',
+                maxZoom: 22,
+                tileSize: 512,
+                zoomOffset: -1
             });
             
             // Add dark tiles by default
