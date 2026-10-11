@@ -12027,22 +12027,33 @@
         
         // v0.252: Generate ambient "fluff" events for live wasteland chronicle
         function startFluffEventGeneration() {
+            console.log('[Chronicle] Starting fluff event generation...');
+            
             // Generate demo players for testing
             generateDemoPlayers();
             
             // Run every 60 seconds
             setInterval(() => {
                 if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                    console.log('[Chronicle] Overseer display open, generating fluff events...');
                     generateFluffEvents();
                 }
             }, 60000);
             
             // Generate initial events immediately
-            setTimeout(generateFluffEvents, 2000);
+            setTimeout(() => {
+                console.log('[Chronicle] Generating initial fluff events...');
+                generateFluffEvents();
+            }, 2000);
         }
         
         function generateDemoPlayers() {
-            if (!window.db) return;
+            if (!window.db) {
+                console.error('[Chronicle] Firebase not available for demo player creation');
+                return;
+            }
+            
+            console.log('[Chronicle] Creating demo players...');
             
             // Create 10 demo players with random positions around Perth
             const baseLat = -31.9505;
@@ -12065,12 +12076,21 @@
                     mutations: Math.floor(Math.random() * 5),
                     photosTaken: Math.floor(Math.random() * 20),
                     isDemo: true
+                }).then(() => {
+                    console.log(`[Chronicle] Created demo player ${i}`);
+                }).catch(err => {
+                    console.error(`[Chronicle] Error creating demo player ${i}:`, err);
                 });
             }
         }
         
         function generateFluffEvents() {
-            if (!window.db) return;
+            if (!window.db) {
+                console.error('[Chronicle] Firebase not available for fluff event generation');
+                return;
+            }
+            
+            console.log('[Chronicle] Fetching wastelanders, zones, and pins...');
             
             // Fetch current wastelanders, zones, pins, waypoints
             Promise.all([
@@ -12082,23 +12102,38 @@
                 const zones = zonesSnap.val() || {};
                 const pins = pinsSnap.val() || {};
                 
+                console.log('[Chronicle] Found', Object.keys(wastelanders).length, 'wastelanders');
+                console.log('[Chronicle] Found', Object.keys(zones).length, 'zones');
+                console.log('[Chronicle] Found', Object.keys(pins).length, 'pins');
+                
                 const now = Date.now();
                 const fiveMinutesAgo = now - 300000;
                 
                 // Get active players (seen in last 5 minutes)
                 const activePlayers = Object.entries(wastelanders)
-                    .filter(([uid, w]) => w.timestamp >= fiveMinutesAgo && !isTestAccount(w.name))
+                    .filter(([uid, w]) => {
+                        const isActive = w.timestamp >= fiveMinutesAgo;
+                        const isNotTest = !isTestAccount(w.name);
+                        return isActive && isNotTest;
+                    })
                     .map(([uid, w]) => ({ uid, ...w }));
                 
+                console.log('[Chronicle] Found', activePlayers.length, 'active players');
+                
                 // Generate 1 event per active player
+                let eventsGenerated = 0;
                 activePlayers.forEach(player => {
                     const event = generatePlayerEvent(player, activePlayers, zones, pins);
                     if (event) {
+                        console.log(`[Chronicle] Generated event for ${player.name}:`, event.type);
                         logChronicleEvent(event.type, player.uid, player.name, event.data);
+                        eventsGenerated++;
                     }
                 });
+                
+                console.log('[Chronicle] Generated', eventsGenerated, 'fluff events');
             }).catch(err => {
-                console.error('Error generating fluff events:', err);
+                console.error('[Chronicle] Error generating fluff events:', err);
             });
         }
         
