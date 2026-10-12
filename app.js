@@ -11978,10 +11978,21 @@
                     // v0.262: Manually trigger display update after save
                     setTimeout(() => {
                         console.log('[Chronicle] Manually triggering display update...');
-                        if (document.getElementById('tab-chronicle')?.classList.contains('active')) {
+                        
+                        const chronicleTab = document.getElementById('tab-chronicle');
+                        const overseerModal = document.getElementById('overseer-display-modal');
+                        
+                        console.log('[Chronicle] Chronicle tab element:', chronicleTab ? 'found' : 'not found');
+                        console.log('[Chronicle] Chronicle tab active:', chronicleTab?.classList.contains('active'));
+                        console.log('[Chronicle] Overseer modal element:', overseerModal ? 'found' : 'not found');
+                        console.log('[Chronicle] Overseer modal display:', overseerModal?.style.display);
+                        
+                        if (chronicleTab?.classList.contains('active')) {
+                            console.log('[Chronicle] Rendering chronicle tab');
                             renderChronicle();
                         }
-                        if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                        if (overseerModal?.style.display === 'flex') {
+                            console.log('[Chronicle] Rendering overseer chronicle');
                             renderOverseerChronicle();
                         }
                     }, 500); // Small delay to ensure Firebase has propagated the change
