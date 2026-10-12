@@ -202,22 +202,15 @@
         }
         
         function showAddOfficialFactionForm() {
-            showCustomPrompt(
-                '➕ ADD OFFICIAL FACTION\n\n' +
-                'Enter faction details:',
-                [
-                    { label: 'OPEN FORM', action: () => {
-                        document.getElementById('fac-name').value = '';
-                        document.getElementById('fac-rep').value = '0';
-                        document.getElementById('fac-blurb').value = '';
-                        document.getElementById('fac-bio').value = '';
-                        document.getElementById('fac-leader').value = '';
-                        document.getElementById('fac-members').value = '';
-                        document.getElementById('add-faction-modal').style.display = 'flex';
-                        document.getElementById('add-faction-modal').dataset.official = 'true';
-                    }}
-                ]
-            );
+            // v0.279: Directly open the add faction modal instead of showing intermediate prompt
+            document.getElementById('fac-name').value = '';
+            document.getElementById('fac-rep').value = '0';
+            document.getElementById('fac-blurb').value = '';
+            document.getElementById('fac-bio').value = '';
+            document.getElementById('fac-leader').value = '';
+            document.getElementById('fac-members').value = '';
+            document.getElementById('add-faction-modal').style.display = 'flex';
+            document.getElementById('add-faction-modal').dataset.official = 'true';
         }
         
         function showEditOfficialFactionPicker() {
@@ -5325,6 +5318,9 @@
             
             // Listen for long-press / right-click
             pipMap.on('contextmenu', function(e) {
+                // v0.279: Don't open waypoint modal if any modal is already open
+                const anyModalOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
+                if (anyModalOpen) return;
                 openAddWaypointModal(e.latlng.lat, e.latlng.lng);
             });
             
@@ -5334,6 +5330,10 @@
             let longPressTimer = null;
             
             pipMap.getContainer().addEventListener('touchstart', function(e) {
+                // v0.279: Don't trigger long-press if any modal is already open
+                const anyModalOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
+                if (anyModalOpen) return;
+                
                 if (e.touches.length === 1) {
                     touchStartTime = Date.now();
                     touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
