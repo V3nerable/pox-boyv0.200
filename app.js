@@ -11705,13 +11705,17 @@
                 chronicleEntries = Object.keys(data).map(key => ({ id: key, ...data[key] }))
                     .sort((a, b) => b.timestamp - a.timestamp); // Newest first
                 
+                console.log('[Chronicle] Entries listener triggered, found', chronicleEntries.length, 'entries');
+                
                 // Update display if on chronicle tab
                 if (document.getElementById('tab-chronicle')?.classList.contains('active')) {
+                    console.log('[Chronicle] Rendering chronicle tab');
                     renderChronicle();
                 }
                 
                 // v0.251: Update overseer chronicle if overseer display is open
                 if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                    console.log('[Chronicle] Rendering overseer chronicle');
                     renderOverseerChronicle();
                 }
             });
@@ -11755,6 +11759,8 @@
                     const allEvents = Object.keys(data).map(key => ({ id: key, ...data[key] }))
                         .sort((a, b) => a.timestamp - b.timestamp);
                     
+                    console.log('[Chronicle] Total events in Firebase:', allEvents.length);
+                    
                     const now = Date.now();
                     const thirtySecondsAgo = now - 30000;
                     
@@ -11763,18 +11769,28 @@
                     
                     console.log('[Chronicle] Found', recentEvents.length, 'recent events for immediate processing');
                     
-                    if (recentEvents.length === 0) return;
+                    if (recentEvents.length === 0) {
+                        console.log('[Chronicle] No recent events to process');
+                        return;
+                    }
                     
                     // Group related events
                     const grouped = groupRelatedEvents(recentEvents);
+                    console.log('[Chronicle] Grouped into', grouped.length, 'event groups');
                     
                     // Generate narrative for each group
                     let narrativesGenerated = 0;
-                    grouped.forEach(eventGroup => {
+                    grouped.forEach((eventGroup, idx) => {
+                        console.log(`[Chronicle] Processing group ${idx + 1}/${grouped.length}:`, eventGroup);
                         const narrative = generateNarrative(eventGroup);
+                        console.log(`[Chronicle] Generated narrative:`, narrative);
                         if (narrative) {
+                            console.log(`[Chronicle] Saving narrative to Firebase...`);
                             saveChronicleEntry(narrative);
                             narrativesGenerated++;
+                            console.log(`[Chronicle] Narrative saved successfully`);
+                        } else {
+                            console.log(`[Chronicle] No narrative generated for group`);
                         }
                     });
                     
