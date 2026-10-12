@@ -236,11 +236,11 @@
             }
             
             // Populate edit form with faction data
-            document.getElementById('fac-edit-name').value = f.name || '';
-            document.getElementById('fac-edit-blurb').value = f.blurb || f.description || '';
-            document.getElementById('fac-edit-bio').value = f.bio || '';
-            document.getElementById('fac-edit-leader').value = f.leader || '';
-            document.getElementById('fac-edit-members').value = (f.members || []).join(', ');
+            document.getElementById('edit-fac-name').value = f.name || '';
+            document.getElementById('edit-fac-blurb').value = f.blurb || f.description || '';
+            document.getElementById('edit-fac-bio').value = f.bio || '';
+            document.getElementById('edit-fac-leader').value = f.leader || '';
+            document.getElementById('edit-fac-members').value = (f.members || []).join(', ');
             
             facEditId = factionId;
             document.getElementById('edit-faction-modal').dataset.official = 'true';
