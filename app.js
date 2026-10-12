@@ -12568,7 +12568,7 @@
                 
                 for (const [uid, player] of Object.entries(wastelanders)) {
                     // Preserve: name, lat, lng, timestamp, SPECIAL, origin, trait, perk
-                    // Reset: hp, rads, radsLifetime, mutations, glowingOne, inMedZone, inRadZone, photosTaken, etc.
+                    // Reset: hp, rads, radsLifetime, mutations, glowingOne, inMedZone, inRadZone, photosTaken, quest stats, bounty stats, etc.
                     const resetData = {
                         name: player.name,
                         lat: player.lat,
@@ -12581,11 +12581,23 @@
                         glowingOne: false,
                         inMedZone: false,
                         inRadZone: false,
-                        photosTaken: 0
+                        photosTaken: 0,
+                        questsCompleted: 0,
+                        questsIssued: 0,
+                        bountiesClaimed: 0,
+                        bountiesSurvived: 0,
+                        bountiesIssued: 0,
+                        contractsCompleted: 0,
+                        contractsIssued: 0
                     };
                     
                     // Preserve SPECIAL if exists
                     if (player.special) resetData.special = player.special;
+                    
+                    // Preserve origin, trait, perk if they exist
+                    if (player.origin) resetData.origin = player.origin;
+                    if (player.trait) resetData.trait = player.trait;
+                    if (player.perk) resetData.perk = player.perk;
                     
                     const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
                     resetPromises.push(window.firebaseSet(playerRef, resetData));
@@ -12637,12 +12649,16 @@
                 
                 // Clear local quest data
                 localStorage.removeItem('pipboy-quests');
+                localStorage.removeItem('pipboy-issued-quests');
+                localStorage.removeItem('pipboy-accepted-quests');
                 console.log('[FreshSlate] Cleared localStorage quests');
                 
                 // Clear local mail data
                 localStorage.removeItem('pipboy-mail');
                 localStorage.removeItem('pipboy-maillog');
                 localStorage.removeItem('pipboy-outbox');
+                localStorage.removeItem('pipboy-mail-processed');
+                localStorage.removeItem('pipboy-mail-seen');
                 console.log('[FreshSlate] Cleared localStorage mail');
                 
                 // Clear chronicle data
@@ -12650,12 +12666,17 @@
                 rawEvents = [];
                 console.log('[FreshSlate] Cleared chronicle arrays');
                 
+                // Clear any cached Firebase data
+                firebaseQuests = {};
+                console.log('[FreshSlate] Cleared cached Firebase data');
+                
                 showNotification('✅ FRESH SLATE COMPLETE - ALL DATA RESET');
                 
-                // Refresh overseer display
+                // Refresh overseer display with longer delay to ensure Firebase propagation
                 setTimeout(() => {
                     updateOverseerDisplay();
-                }, 1000);
+                    showNotification('OVERSEER DISPLAY REFRESHED');
+                }, 2000);
                 
             } catch (err) {
                 console.error('[FreshSlate] Reset failed:', err);
