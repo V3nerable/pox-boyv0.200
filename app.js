@@ -11975,27 +11975,34 @@
             window.firebasePush(entryRef, entry)
                 .then(() => {
                     console.log('[Chronicle] Entry pushed to Firebase successfully');
-                    // v0.262: Manually trigger display update after save
+                    // v0.266: Fetch entries directly from Firebase and render
                     setTimeout(() => {
-                        console.log('[Chronicle] Manually triggering display update...');
+                        console.log('[Chronicle] Fetching entries from Firebase for immediate render...');
                         
-                        const chronicleTab = document.getElementById('tab-chronicle');
-                        const overseerModal = document.getElementById('overseer-display-modal');
-                        
-                        console.log('[Chronicle] Chronicle tab element:', chronicleTab ? 'found' : 'not found');
-                        console.log('[Chronicle] Chronicle tab active:', chronicleTab?.classList.contains('active'));
-                        console.log('[Chronicle] Overseer modal element:', overseerModal ? 'found' : 'not found');
-                        console.log('[Chronicle] Overseer modal display:', overseerModal?.style.display);
-                        
-                        if (chronicleTab?.classList.contains('active')) {
-                            console.log('[Chronicle] Rendering chronicle tab');
-                            renderChronicle();
-                        }
-                        if (overseerModal?.style.display === 'flex') {
-                            console.log('[Chronicle] Rendering overseer chronicle');
-                            renderOverseerChronicle();
-                        }
-                    }, 500); // Small delay to ensure Firebase has propagated the change
+                        window.firebaseGet(window.firebaseRef(window.db, 'chronicle/entries'))
+                            .then(snapshot => {
+                                const data = snapshot.val() || {};
+                                chronicleEntries = Object.keys(data).map(key => ({ id: key, ...data[key] }))
+                                    .sort((a, b) => b.timestamp - a.timestamp);
+                                
+                                console.log('[Chronicle] Fetched', chronicleEntries.length, 'entries from Firebase');
+                                
+                                const chronicleTab = document.getElementById('tab-chronicle');
+                                const overseerModal = document.getElementById('overseer-display-modal');
+                                
+                                if (chronicleTab?.classList.contains('active')) {
+                                    console.log('[Chronicle] Rendering chronicle tab');
+                                    renderChronicle();
+                                }
+                                if (overseerModal?.style.display === 'flex') {
+                                    console.log('[Chronicle] Rendering overseer chronicle');
+                                    renderOverseerChronicle();
+                                }
+                            })
+                            .catch(err => {
+                                console.error('[Chronicle] Error fetching entries for immediate render:', err);
+                            });
+                    }, 1000); // Wait 1 second for Firebase to propagate
                 })
                 .catch(err => {
                     console.error('[Chronicle] Error pushing entry to Firebase:', err);
