@@ -4254,13 +4254,20 @@
         }
 
         function openFactionAuth(action, specificId = null) {
-            pendingAuthAction = action; // 'ADD', 'EDIT', or 'EDIT_SPECIFIC'
+            pendingAuthAction = action; // 'ADD', 'EDIT', 'EDIT_SPECIFIC', or 'DEV_SKIP'
             if (specificId !== null) pendingRepId = specificId;
             
             document.getElementById('auth-code').value = '';
             document.getElementById('auth-amount-group').style.display = 'none';
             document.getElementById('auth-title').innerText = "OVERSEER AUTHORIZATION";
-            document.getElementById('auth-desc').innerText = `Enter security code to access faction database.`;
+            
+            // v0.272: Customize description based on action
+            if (action === 'DEV_SKIP') {
+                document.getElementById('auth-desc').innerText = `Enter security code to activate dev/test mode and skip onboarding.`;
+            } else {
+                document.getElementById('auth-desc').innerText = `Enter security code to access faction database.`;
+            }
+            
             document.getElementById('auth-modal').style.display = 'flex';
         }
 
