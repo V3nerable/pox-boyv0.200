@@ -2501,8 +2501,6 @@
                     </div>`;
             }
             
-            // v0.160: Bounty stage needs target picker
-            let bountyField = '';
             // v0.287: Bounty stages no longer have target picker (use description instead)
             let bountyField = '';
             
