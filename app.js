@@ -12039,13 +12039,20 @@
         
         // v0.251: Render chronicle in overseer display
         function renderOverseerChronicle() {
+            console.log('[Chronicle] renderOverseerChronicle called, entries count:', chronicleEntries.length);
             const container = document.getElementById('overseer-chronicle-feed');
-            if (!container) return;
+            if (!container) {
+                console.log('[Chronicle] overseer-chronicle-feed container not found');
+                return;
+            }
             
             if (chronicleEntries.length === 0) {
+                console.log('[Chronicle] No entries to render, showing quiet message');
                 container.innerHTML = '<p style="opacity: 0.5; text-align: center;">The wasteland is quiet... for now.</p>';
                 return;
             }
+            
+            console.log('[Chronicle] Rendering', chronicleEntries.length, 'entries');
             
             let html = '<div class="chronicle-entries">';
             
