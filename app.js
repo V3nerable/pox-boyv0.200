@@ -11830,7 +11830,7 @@
                 affectedUsers: realUsers.map(u => u.userName).join(', '),
                 relatedPhotos: realUsers.map(u => u.data?.photo || '').filter(Boolean).join(','),
                 locationData: realUsers.map(u => u.data?.location || '').filter(Boolean).join(','),
-                day: Math.floor((mainEvent.timestamp - window.eventStartTime) / 86400000) + 1
+                day: window.eventStartTime ? Math.floor((mainEvent.timestamp - window.eventStartTime) / 86400000) + 1 : 1
             };
         }
         
