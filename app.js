@@ -1815,6 +1815,50 @@
             if (b && localStorage.getItem('pipboy-vibrate') === '0') b.innerText = '[VIBRATE: OFF]';
         })();
 
+        // v0.281: Toggle native keyboard input
+        function toggleNativeKeyboard() {
+            const useNative = localStorage.getItem('pipboy-native-keyboard') !== 'true';
+            localStorage.setItem('pipboy-native-keyboard', useNative ? 'true' : 'false');
+            const b = document.getElementById('options-keyboard-btn');
+            if (b) b.innerText = '[KEYBOARD: ' + (useNative ? 'NATIVE' : 'VIRTUAL') + ']';
+            showNotification('KEYBOARD: ' + (useNative ? 'NATIVE (use device keyboard)' : 'VIRTUAL (in-app keyboard)'));
+            
+            // Apply to all input fields
+            applyKeyboardSetting();
+        }
+        
+        function applyKeyboardSetting() {
+            const useNative = localStorage.getItem('pipboy-native-keyboard') === 'true';
+            const inputs = document.querySelectorAll('input.pip-input.vk-target, textarea.pip-input.vk-target');
+            
+            inputs.forEach(input => {
+                if (useNative) {
+                    // Enable native keyboard
+                    input.removeAttribute('readonly');
+                    input.removeAttribute('onclick');
+                } else {
+                    // Restore virtual keyboard
+                    if (!input.hasAttribute('readonly')) {
+                        input.setAttribute('readonly', 'readonly');
+                    }
+                    // Restore onclick if it was removed (we'll need to store the original)
+                    if (!input.hasAttribute('onclick') && input.id) {
+                        input.setAttribute('onclick', `openVk('${input.id}')`);
+                    }
+                }
+            });
+        }
+        
+        // Initialize keyboard setting on load
+        (function() {
+            const b = document.getElementById('options-keyboard-btn');
+            if (b && localStorage.getItem('pipboy-native-keyboard') === 'true') {
+                b.innerText = '[KEYBOARD: NATIVE]';
+            }
+            // Apply setting after DOM is ready
+            setTimeout(applyKeyboardSetting, 500);
+        })();
+
         // --- v0.56: HEADER HUD GLYPHS (state icons instead of toast chatter) ---
         // sat glyph: dim = off | amber = locked | red blink = unstable-holding.
         // radio glyph: absent = off | phosphor = free-run | amber = LIVE-synced train.

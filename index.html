@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.271</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.281</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -213,6 +213,7 @@
                 <button class="pip-btn" id="options-wire-btn" onclick="cycleWireAlerts()" style="border-style: dashed;">[WIRE ALERTS: ON]</button>
                 <button class="pip-btn" id="options-nlnk-btn" onclick="cycleNotify('link','options-nlnk-btn','LINKS')" style="border-style: dashed;">[NOTIFY LINKS: ON]</button>
                 <button class="pip-btn" id="options-vibrate-btn" onclick="cycleVibrate()" style="border-style: dashed;">[VIBRATE: ON]</button>
+                <button class="pip-btn" id="options-keyboard-btn" onclick="toggleNativeKeyboard()" style="border-style: dashed;">[KEYBOARD: VIRTUAL]</button>
                 <button class="pip-btn" id="options-scrambler-btn" onclick="toggleScrambler()" style="border-style: dashed; border-color: #ffb642; color: #ffb642;">[BEACON SCRAMBLER: OFF]</button>
                 <button class="pip-btn" id="options-appqr-btn" onclick="showAppQRCode()" style="border-style: dashed; border-color: #5fc98e; color: #5fc98e;">[SHARE APP QR CODE]</button>
                 <button class="pip-btn" id="options-archive-btn" onclick="if(typeof checkAndArchiveOldData==='function'){checkAndArchiveOldData(true)}else{showNotification('Archive function not available')}" style="border-style: dashed; border-color: #ffb642; color: #ffb642;">[ARCHIVE OLD DATA]</button>
@@ -1063,7 +1064,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.280</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.281</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
