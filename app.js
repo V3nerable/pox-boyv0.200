@@ -11969,8 +11969,26 @@
         function saveChronicleEntry(entry) {
             if (!window.db) return;
             
+            console.log('[Chronicle] saveChronicleEntry called with:', entry);
+            
             const entryRef = window.firebaseRef(window.db, 'chronicle/entries');
-            window.firebasePush(entryRef, entry);
+            window.firebasePush(entryRef, entry)
+                .then(() => {
+                    console.log('[Chronicle] Entry pushed to Firebase successfully');
+                    // v0.262: Manually trigger display update after save
+                    setTimeout(() => {
+                        console.log('[Chronicle] Manually triggering display update...');
+                        if (document.getElementById('tab-chronicle')?.classList.contains('active')) {
+                            renderChronicle();
+                        }
+                        if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                            renderOverseerChronicle();
+                        }
+                    }, 500); // Small delay to ensure Firebase has propagated the change
+                })
+                .catch(err => {
+                    console.error('[Chronicle] Error pushing entry to Firebase:', err);
+                });
         }
         
         function renderChronicle() {
