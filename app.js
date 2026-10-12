@@ -3493,10 +3493,13 @@
             }
             buttons.push({ label: 'CLOSE', action: () => {} });
             const pendingVerifications = [];
+            const rejectedCompletions = [];
             if (q.progress) {
                 Object.keys(q.progress).forEach(uid => {
                     if (q.progress[uid].status === 'completed') {
                         pendingVerifications.push({ uid, ...q.progress[uid] });
+                    } else if (q.progress[uid].status === 'rejected') {
+                        rejectedCompletions.push({ uid, ...q.progress[uid] });
                     }
                 });
             }
@@ -8796,7 +8799,8 @@
                     }
                     continue; // handshakes are prompts, never inbox rows
                 }
-                if (isContact(l.from)) {
+                // v0.290: verify-request messages bypass contact check (quest completions should always be visible)
+                if (isContact(l.from) || l.type === 'verify-request') {
                     inboxLetters[key] = l;
                     if (mailSeen.indexOf(key) === -1) {
                         mailSeen.push(key); changedSeen = true;
@@ -8833,7 +8837,10 @@
         }
         function flagLetter(key, field) {
             if (!window.db) return;
-            window.firebaseSet(window.firebaseRef(window.db, 'mail/' + myMailUid + '/' + key + '/' + field), true).catch(() => {});
+            // v0.291: Use update instead of set to avoid validation errors
+            const updates = {};
+            updates[field] = true;
+            window.firebaseUpdate(window.firebaseRef(window.db, 'mail/' + myMailUid + '/' + key), updates).catch(() => {});
         }
         function markProcessed(key) {
             mailProcessed.push(key);
@@ -8842,6 +8849,16 @@
             delete inboxLetters[key];
             delete unverifiedLetters[key]; // also consume letters opened via the untrusted gate
             renderMailBadge(); // v0.48: badge repaints the INSTANT a letter resolves — before this it waited (visibly) on the next Firebase snapshot
+        }
+        
+        // v0.291: Mark as read only (don't remove from inbox)
+        function markRead(key) {
+            if (mailSeen.indexOf(key) === -1) {
+                mailSeen.push(key);
+                if (mailSeen.length > 500) mailSeen = mailSeen.slice(-500);
+                saveComms();
+            }
+            renderMailBadge();
         }
 
         function typeSummary(l) {
@@ -8979,10 +8996,22 @@
                 // Check if completion is already verified/rejected
                 let completionAlreadyProcessed = false;
                 let completerProgress = null;
+                let completedByUid = null;
                 if (quest && quest.progress && p.completedByName) {
-                    const completedByUid = Object.keys(quest.progress).find(uid => {
+                    // Try to find by completedByName first
+                    completedByUid = Object.keys(quest.progress).find(uid => {
                         return quest.progress[uid].completedByName === p.completedByName;
                     });
+                    
+                    // v0.290: Fallback - if name matching fails, try to find any completed progress
+                    if (!completedByUid) {
+                        completedByUid = Object.keys(quest.progress).find(uid => {
+                            return quest.progress[uid].status === 'completed' || 
+                                   quest.progress[uid].status === 'verified' || 
+                                   quest.progress[uid].status === 'rejected';
+                        });
+                    }
+                    
                     if (completedByUid) {
                         completerProgress = quest.progress[completedByUid];
                         completionAlreadyProcessed = completerProgress.status === 'verified' || completerProgress.status === 'rejected';
@@ -9008,8 +9037,13 @@
                 
                 const buttons = [];
                 if (isAlreadyProcessed || completionAlreadyProcessed) {
-                    // Quest or completion already processed - only allow dismiss
+                    // Quest or completion already processed - only allow dismiss (mark as read, keep in inbox)
                     buttons.push({ label: 'DISMISS', action: () => { 
+                        markRead(key); 
+                        // v0.291: Just mark as read, keep in inbox
+                        if (mailTabActive()) renderMail();
+                    }});
+                    buttons.push({ label: 'DELETE', color: '#ff3333', action: () => { 
                         markProcessed(key); 
                         retireLetter(key); 
                         if (mailTabActive()) renderMail();
@@ -9034,6 +9068,11 @@
                     buttons.push({ label: 'VERIFY COMPLETION', color: '#39ff14', action: () => { verifyQuestFromMail(key, l); } });
                     buttons.push({ label: 'REJECT', color: '#ff3333', action: () => { rejectQuestFromMail(key, l); } });
                     buttons.push({ label: 'DISMISS', action: () => { 
+                        markRead(key); 
+                        // v0.291: Just mark as read, keep in inbox
+                        if (mailTabActive()) renderMail();
+                    }});
+                    buttons.push({ label: 'DELETE', color: '#ff3333', action: () => { 
                         markProcessed(key); 
                         retireLetter(key); 
                         if (mailTabActive()) renderMail();
@@ -9063,15 +9102,17 @@
                     playSound('johnnyGuitar');
                     showCustomPrompt('QUEST REJECTED BY ' + from + ':\n\n"' + (p.title || '') + '"\n\nYour completion was rejected. The quest has been returned to your active quests.', [
                         { label: 'DISMISS', action: () => { 
+                            markRead(key); 
+                            if (mailTabActive()) renderMail();
+                        }},
+                        { label: 'DELETE', color: '#ff3333', action: () => { 
                             markProcessed(key); 
                             retireLetter(key); 
                             if (mailTabActive()) renderMail();
                         }}
                     ]);
                 }
-                // Mark as processed and retire
-                markProcessed(key); 
-                retireLetter(key); 
+                // v0.291: Don't auto-mark as processed and retire - let user choose
                 if (mailTabActive()) renderMail();
             }
         }
