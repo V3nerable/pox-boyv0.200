@@ -12099,7 +12099,13 @@
         }
         
         // Initialize chronicle system
-        if (localStorage.getItem('pipboy-dev-mode') === 'true') {
+        // v0.263: Auto-start for testing (force enabled)
+        const devModeEnabled = localStorage.getItem('pipboy-dev-mode') === 'true';
+        console.log('[Chronicle] Dev mode status:', devModeEnabled ? 'ENABLED' : 'DISABLED');
+        
+        // Force start chronicle for testing
+        if (true || devModeEnabled) {
+            console.log('[Chronicle] Initializing chronicle system...');
             startChronicleListener();
             // v0.256: Start fluff event generation for live chronicle demo (wait for Firebase to be fully ready)
             const startFluffWhenReady = () => {
