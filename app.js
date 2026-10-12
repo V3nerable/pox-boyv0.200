@@ -131,12 +131,58 @@
         
         let quests = storedQuests ? JSON.parse(storedQuests) : [];
 
-        let factions = storedFactions ? JSON.parse(storedFactions) : [
-            { id: 1, name: "THE WAR BOYS", rep: 25, leader: "Immortan Joe", blurb: "Cult fanatical foot soldiers loyal to the Immortan.", bio: "Raised from birth to serve the Immortan, these pale warriors live half-lives, sustained by bloodbags and the promise of Valhalla.", members: ["Slit", "Nux", "Morsov", "Rictus Erectus"] },
-            { id: 2, name: "SCAVENGERS GUILD", rep: 60, leader: "The Keeper of the Scales", blurb: "Nomads who trade pre-war junk for water and guzzoline.", bio: "Wandering merchants and scrappers. They hold no allegiance except to the highest bidder and the promise of survival.", members: ["The Merchant", "Scrap-Iron", "Rust"] },
-            { id: 3, name: "THE BUZZARDS", rep: -20, leader: "Unknown", blurb: "Spiky, Russian-speaking raiders who prowl the wastes.", bio: "Vicious scavengers known for driving spike-covered vehicles. They attack unprovoked and take no prisoners.", members: ["Buzzard 1", "Buzzard 2"] },
-            { id: 4, name: "VAULT-TEC SURVIVORS", rep: 0, leader: "The Overseer", blurb: "Tunnel-dwellers who recently surfaced with high-tech gear.", bio: "Emerged from the deep underground bunkers. They have pristine jumpsuits and zero understanding of how the wasteland actually works.", members: ["Vault Boy", "Gary 1", "Gary 2"] }
-        ];
+        // v0.276: Real-time faction sync
+        // Official factions from Firebase (overseer-managed, synced to all users)
+        let officialFactions = [];
+        
+        // Personal factions from localStorage (user-created, local only)
+        let personalFactions = storedFactions ? JSON.parse(storedFactions) : [];
+        
+        // User reputation for each faction (stored locally per faction ID)
+        let factionReps = JSON.parse(localStorage.getItem('pipboy-faction-reps') || '{}');
+        
+        // Combined factions for display (official first, then personal)
+        function getFactions() {
+            const official = officialFactions.map(f => ({ ...f, isOfficial: true }));
+            const personal = personalFactions.map(f => ({ ...f, isOfficial: false }));
+            return [...official, ...personal];
+        }
+        
+        // Get user's reputation for a faction
+        function getFactionRep(factionId) {
+            return factionReps[factionId] || 0;
+        }
+        
+        // Set user's reputation for a faction
+        function setFactionRep(factionId, rep) {
+            factionReps[factionId] = rep;
+            localStorage.setItem('pipboy-faction-reps', JSON.stringify(factionReps));
+        }
+        
+        // Initialize Firebase listener for official factions (real-time sync)
+        function initOfficialFactionsListener() {
+            if (!window.db) {
+                console.log('[Factions] Firebase not ready, retrying in 2s...');
+                setTimeout(initOfficialFactionsListener, 2000);
+                return;
+            }
+            
+            const factionsRef = window.firebaseRef(window.db, 'officialFactions');
+            window.firebaseOnValue(factionsRef, (snapshot) => {
+                const data = snapshot.val() || {};
+                officialFactions = Object.keys(data).map(key => ({ id: key, ...data[key] }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                
+                console.log('[Factions] Loaded', officialFactions.length, 'official factions from Firebase');
+                
+                // Re-render if on factions tab
+                if (document.getElementById('tab-data')?.classList.contains('active') && currentDataTab === 'factions') {
+                    renderFactions();
+                }
+            }, (error) => {
+                console.error('[Factions] Error listening to official factions:', error);
+            });
+        }
 
         // v0.59: DEFAULT WAYPOINTS with version-based merge for existing users
         const DEFAULT_WAYPOINTS = [
@@ -4142,8 +4188,11 @@
             const container = document.getElementById('factions-list-display');
             container.innerHTML = '';
             
-            factions.forEach(f => {
-                const relation = getFactionRelation(f.rep);
+            const allFactions = getFactions();
+            
+            allFactions.forEach(f => {
+                const rep = getFactionRep(f.id);
+                const relation = getFactionRelation(rep);
 
                 const el = document.createElement('div');
                 el.className = 'item-row';
@@ -4152,8 +4201,11 @@
                 el.style.marginBottom = '10px';
                 
                 // Add left click for detail view, and right click / long press for quick edit
-                el.setAttribute('onclick', `openFactionDetail(${f.id})`);
-                el.setAttribute('oncontextmenu', `openFactionAuth('EDIT_SPECIFIC', ${f.id}); return false;`);
+                el.setAttribute('onclick', `openFactionDetail('${f.id}')`);
+                if (!f.isOfficial) {
+                    // Only allow editing personal factions
+                    el.setAttribute('oncontextmenu', `openFactionAuth('EDIT_SPECIFIC', '${f.id}'); return false;`);
+                }
                 
                 let memberPreview = '';
                 if (f.leader) {
@@ -4169,20 +4221,25 @@
                     secondaryLine = `<div style="font-size: 0.85rem; opacity: 0.6; margin-top: 5px; font-style: italic;">${memberPreview}</div>`;
                 }
 
+                // v0.276: Official vs personal badge
+                const badge = f.isOfficial 
+                    ? '<span style="font-size: 0.7rem; background: #4a90e2; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 8px;">🔵 OFFICIAL</span>'
+                    : '<span style="font-size: 0.7rem; background: #666; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 8px;">👤 PERSONAL</span>';
+
                 el.innerHTML = `
                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--pip-color-dim); padding-bottom: 5px; margin-bottom: 5px;">
-                        <div style="font-weight: bold; font-size: 1.3rem;">${f.name}</div>
+                        <div style="font-weight: bold; font-size: 1.3rem;">${f.name}${badge}</div>
                         <div style="font-weight: bold; color: ${relation.color}; text-shadow: 0 0 5px ${relation.color};">[${relation.text}]</div>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="font-size: 1rem; opacity: 0.8; line-height: 1.2; padding-right: 15px; flex-grow: 1;">
-                            ${f.blurb}
+                            ${f.blurb || f.description || 'No description'}
                             ${secondaryLine}
                         </div>
                         <div style="display: flex; gap: 5px; align-items: center; border: 1px dashed var(--pip-color-dim); padding: 5px;" onclick="event.stopPropagation();">
-                            <button class="theme-btn" onclick="openRepAuthModal(${f.id}, false)" style="padding: 0 8px;">-</button>
-                            <span style="font-weight: bold; width: 45px; text-align: center;">${f.rep}</span>
-                            <button class="theme-btn" onclick="openRepAuthModal(${f.id}, true)" style="padding: 0 8px;">+</button>
+                            <button class="theme-btn" onclick="openRepAuthModal('${f.id}', false)" style="padding: 0 8px;">-</button>
+                            <span style="font-weight: bold; width: 45px; text-align: center;">${rep}</span>
+                            <button class="theme-btn" onclick="openRepAuthModal('${f.id}', true)" style="padding: 0 8px;">+</button>
                         </div>
                     </div>
                 `;
@@ -4220,22 +4277,24 @@
         }
 
         function openFactionDetail(id) {
-            const f = factions.find(fac => fac.id === id);
+            const allFactions = getFactions();
+            const f = allFactions.find(fac => fac.id === id);
             if (!f) return;
             
-            const relation = getFactionRelation(f.rep);
+            const rep = getFactionRep(f.id);
+            const relation = getFactionRelation(rep);
             
             document.getElementById('fd-name').innerText = f.name;
             document.getElementById('fd-relation').innerText = relation.text;
             document.getElementById('fd-relation').style.color = relation.color;
-            document.getElementById('fd-rep').innerText = f.rep;
+            document.getElementById('fd-rep').innerText = rep;
             
             // Render Leader dynamically
             const bioEl = document.getElementById('fd-bio');
             if (f.leader) {
-                bioEl.innerHTML = `<span style="font-weight:bold; font-size:1.2rem;">LEADER:</span> <span style="font-size:1.2rem;">${f.leader}</span><br><br>` + (f.bio || "No expanded lore available in the archives.");
+                bioEl.innerHTML = `<span style="font-weight:bold; font-size:1.2rem;">LEADER:</span> <span style="font-size:1.2rem;">${f.leader}</span><br><br>` + (f.bio || f.description || "No expanded lore available in the archives.");
             } else {
-                bioEl.innerText = f.bio || "No expanded lore available in the archives.";
+                bioEl.innerText = f.bio || f.description || "No expanded lore available in the archives.";
             }
             
             const membersUl = document.getElementById('fd-members');
@@ -4312,12 +4371,13 @@
                     return;
                 }
 
-                const f = factions.find(fac => fac.id === pendingRepId);
+                const allFactions = getFactions();
+                const f = allFactions.find(fac => fac.id === pendingRepId);
                 if (f) {
                     if (!pendingRepIsPositive) amount = -amount;
-                    f.rep += amount;
+                    const currentRep = getFactionRep(f.id);
+                    setFactionRep(f.id, currentRep + amount);
                     
-                    saveToStorage();
                     if (document.getElementById('tab-data').classList.contains('active') && currentDataTab === 'factions') {
                         renderFactions();
                     }
@@ -10928,6 +10988,15 @@
         } catch (e) {
             console.error('Error initializing photo storage:', e);
             // Don't let photo storage errors prevent app from loading
+        }
+
+        // v0.276: Initialize real-time faction sync
+        try {
+            if (typeof initOfficialFactionsListener === 'function') {
+                initOfficialFactionsListener();
+            }
+        } catch (e) {
+            console.error('Error initializing faction listener:', e);
         }
 
         // ==================== PWA INSTALL PIPELINE (v0.32) ====================
