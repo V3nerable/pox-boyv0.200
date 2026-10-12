@@ -131,6 +131,37 @@
         
         let quests = storedQuests ? JSON.parse(storedQuests) : [];
 
+        // v0.288: Global modal state tracker to prevent map interactions during modal open/close
+        let modalState = {
+            isOpen: false,
+            openingModal: null,
+            timestamp: 0
+        };
+        
+        function setModalState(isOpen, modalName = null) {
+            modalState.isOpen = isOpen;
+            modalState.openingModal = modalName;
+            modalState.timestamp = Date.now();
+        }
+        
+        function isAnyModalOpenOrOpening() {
+            // Check global state first (catches modals being opened)
+            if (modalState.isOpen) return true;
+            
+            // Check if a modal was opened in the last 100ms (catches race conditions)
+            if (Date.now() - modalState.timestamp < 100) return true;
+            
+            // Fallback: Check for any visible modal overlays
+            const modals = document.querySelectorAll('.modal-overlay');
+            for (let modal of modals) {
+                const style = window.getComputedStyle(modal);
+                if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // v0.276: Real-time faction sync
         // Official factions from Firebase (overseer-managed, synced to all users)
         let officialFactions = [];
@@ -1959,6 +1990,9 @@
 
         // Custom in-app confirmation replacement
         function showCustomPrompt(text, buttons) {
+            // v0.288: Set modal state to opening
+            setModalState(true, 'custom-prompt');
+            
             // v0.240: Hide all other modals to ensure custom-prompt is on top
             const allModals = document.querySelectorAll('.modal-overlay');
             allModals.forEach(modal => {
@@ -2028,6 +2062,10 @@
             if (mcEl) mcEl.scrollTop = 0;
             cpModal.style.display = 'block';
             cpModal.classList.add('active');
+            
+            // v0.288: Confirm modal state is open
+            setModalState(true, 'custom-prompt');
+            
             // v0.94: triple-tap scroll reset — immediate, after paint, and after paint-of-paint
             cpModal.scrollTop = 0;
             requestAnimationFrame(() => {
@@ -3170,9 +3208,9 @@
             window.firebaseSet(progRef, progressData)
                 .then(() => {
                     closeCustomPrompt();
-                    // v0.227: Skip notification modal — quest details modal opens next and they were overlapping
+                    // v0.288: Don't open quest modal after accepting, just show notification
                     playSound('lunchbox');
-                    setTimeout(() => openMultiStageQuestModal(id), 300);
+                    showNotification('QUEST ACCEPTED - CHECK ACTIVE QUESTS');
                 })
                 .catch(err => showNotification('ERROR ACCEPTING QUEST: ' + err.message));
         }
@@ -3239,12 +3277,12 @@
                 compressPhotoForEvidence(photoDataUrl, (compressedUrl) => {
                     console.log('[Multi-Stage] Compressed photo URL length:', compressedUrl.length);
                     completeMultiStageStage(pending.questId, pending.stageIdx, { photo: compressedUrl });
-                    switchMainTab('data');
+                    // v0.288: Don't switch tabs, stay on current screen
                 });
             } else {
                 // Complete the stage with this photo
                 completeMultiStageStage(pending.questId, pending.stageIdx, { photo: photoDataUrl });
-                switchMainTab('data');
+                // v0.288: Don't switch tabs, stay on current screen
             }
         }
         
@@ -3383,15 +3421,9 @@
             const progRef = window.firebaseRef(window.db, `quests/${questId}/progress/${myUid}`);
             console.log('[Multi-Stage] Updating Firebase path:', `quests/${questId}/progress/${myUid}`);
             
-            // v0.230: Update both quest-level status (for bounty claiming) and user progress
-            const questRef = window.firebaseRef(window.db, `quests/${questId}`);
-            const updatePromises = [];
-            if (Object.keys(questUpdates).length > 0) {
-                updatePromises.push(window.firebaseUpdate(questRef, questUpdates));
-            }
-            updatePromises.push(window.firebaseUpdate(progRef, updates));
-            
-            Promise.all(updatePromises)
+            // v0.288: Removed quest-level updates (no longer using bounty_claimed logic)
+            // Just update user progress
+            window.firebaseUpdate(progRef, updates)
                 .then(() => {
                     console.log('[Multi-Stage] Firebase update successful');
                     playSound('level-up');
@@ -3402,8 +3434,7 @@
                         sendMultiStageVerificationRequest(questId);
                     } else {
                         showNotification(`STAGE ${stageIdx + 1} COMPLETED - STAGE ${stageIdx + 2} UNLOCKED`);
-                        // Re-open modal to show next stage
-                        setTimeout(() => openMultiStageQuestModal(questId), 500);
+                        // v0.288: Don't re-open modal, just show notification
                     }
                 })
                 .catch(err => {
@@ -4922,6 +4953,9 @@
         
         // v0.85: helper to close the custom prompt modal (class + inline style)
         function closeCustomPrompt() {
+            // v0.288: Set modal state to closing
+            setModalState(false, 'closing-custom-prompt');
+            
             const m = document.getElementById('custom-prompt-modal');
             if (m) { m.style.display = 'none'; m.classList.remove('active'); }
             
@@ -4933,9 +4967,15 @@
                     delete modal.dataset.wasVisible;
                 }
             });
+            
+            // v0.288: Reset modal state after a short delay
+            setTimeout(() => setModalState(false, null), 50);
         }
 
         function closeModals() { 
+            // v0.288: Set modal state to closing
+            setModalState(false, 'closing');
+            
             // v0.139: Don't close overseer display modal when closing other modals
             document.querySelectorAll('.modal-overlay').forEach(m => { 
                 if (m.id !== 'overseer-display-modal') {
@@ -4945,6 +4985,9 @@
             }); 
             activeItemId = null; 
             if (html5QrCode) stopQRScanner();
+            
+            // v0.288: Reset modal state after a short delay
+            setTimeout(() => setModalState(false, null), 50);
         }
 
         let html5QrCode = null;
@@ -5320,9 +5363,8 @@
             
             // Listen for long-press / right-click
             pipMap.on('contextmenu', function(e) {
-                // v0.279: Don't open waypoint modal if any modal is already open
-                const anyModalOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
-                if (anyModalOpen) return;
+                // v0.288: Don't open waypoint modal if any modal is already open or opening
+                if (isAnyModalOpenOrOpening()) return;
                 openAddWaypointModal(e.latlng.lat, e.latlng.lng);
             });
             
@@ -5332,9 +5374,8 @@
             let longPressTimer = null;
             
             pipMap.getContainer().addEventListener('touchstart', function(e) {
-                // v0.279: Don't trigger long-press if any modal is already open
-                const anyModalOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
-                if (anyModalOpen) return;
+                // v0.288: Don't trigger long-press if any modal is already open or opening
+                if (isAnyModalOpenOrOpening()) return;
                 
                 if (e.touches.length === 1) {
                     touchStartTime = Date.now();
@@ -6827,12 +6868,12 @@
                         compressPhotoForEvidence(photoDataUrl, (compressedUrl) => {
                             console.log('[Multi-Stage] Compressed photo URL length:', compressedUrl.length);
                             completeMultiStageStage(pending.questId, pending.stageIdx, { photo: compressedUrl });
-                            switchMainTab('data');
+                            // v0.288: Don't switch tabs, stay on current screen
                         });
                     } else {
                         // Complete the stage with this photo
                         completeMultiStageStage(pending.questId, pending.stageIdx, { photo: photoDataUrl });
-                        switchMainTab('data');
+                        // v0.288: Don't switch tabs, stay on current screen
                     }
                     return;
                 }
