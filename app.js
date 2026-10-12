@@ -4557,18 +4557,27 @@
                 document.getElementById('add-faction-modal').style.display = 'flex';
             } else if (pendingAuthAction === 'EDIT' || pendingAuthAction === 'EDIT_SPECIFIC') {
                 closeModals();
-                const select = document.getElementById('fac-edit-select'); // v0.55: now a themed picker input
-                if (factions.length === 0) {
-                    facEditId = null;
-                    select.value = 'NO FACTIONS ON FILE';
-                    populateEditFaction();
-                } else {
-                    const wantId = parseInt(pendingRepId, 10);
-                    facEditId = (pendingAuthAction === 'EDIT_SPECIFIC' && factions.some(f => f.id === wantId)) ? wantId : factions[0].id;
-                    select.value = (factions.find(f => f.id === facEditId).name || 'UNKNOWN').toUpperCase();
-                    populateEditFaction();
+                const allFactions = getFactions();
+                if (allFactions.length === 0) {
+                    showNotification('NO FACTIONS ON FILE. Use 🔵 ADD OFFICIAL FACTION to create one.');
+                    return;
                 }
-                document.getElementById('edit-faction-modal').style.display = 'flex';
+                
+                // Show faction picker
+                const buttons = allFactions.map(f => ({
+                    label: (f.name || 'UNKNOWN').toUpperCase(),
+                    action: () => {
+                        facEditId = f.id;
+                        document.getElementById('edit-fac-name').value = f.name;
+                        document.getElementById('edit-fac-blurb').value = f.blurb || f.description || '';
+                        document.getElementById('edit-fac-bio').value = f.bio || '';
+                        document.getElementById('edit-fac-leader').value = f.leader || '';
+                        document.getElementById('edit-fac-members').value = f.members ? f.members.join(', ') : '';
+                        document.getElementById('edit-faction-modal').style.display = 'flex';
+                    }
+                }));
+                buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
+                showCustomPrompt('EDIT WHICH FACTION?', buttons);
             }
         }
 
