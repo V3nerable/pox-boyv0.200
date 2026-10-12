@@ -12011,11 +12011,23 @@
         // Initialize chronicle system
         if (localStorage.getItem('pipboy-dev-mode') === 'true') {
             startChronicleListener();
-            // v0.255: Start fluff event generation for live chronicle demo (wait for Firebase)
+            // v0.256: Start fluff event generation for live chronicle demo (wait for Firebase to be fully ready)
             const startFluffWhenReady = () => {
-                if (window.db) {
-                    console.log('[Chronicle] Firebase ready, starting fluff event generation...');
-                    startFluffEventGeneration();
+                if (window.db && typeof window.firebaseRef === 'function') {
+                    // Test if Firebase is actually ready by trying a simple operation
+                    try {
+                        const testRef = window.firebaseRef(window.db, '.info/connected');
+                        window.firebaseOnValue(testRef, (snap) => {
+                            console.log('[Chronicle] Firebase fully ready and connected, starting fluff event generation...');
+                            startFluffEventGeneration();
+                        }, (err) => {
+                            console.log('[Chronicle] Firebase connection test failed, retrying...', err);
+                            setTimeout(startFluffWhenReady, 500);
+                        }, { onlyOnce: true });
+                    } catch (e) {
+                        console.log('[Chronicle] Firebase not ready yet, retrying in 500ms...');
+                        setTimeout(startFluffWhenReady, 500);
+                    }
                 } else {
                     console.log('[Chronicle] Waiting for Firebase to initialize...');
                     setTimeout(startFluffWhenReady, 500);
@@ -12146,7 +12158,9 @@
                 const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
                 
                 // Update timestamp and slightly randomize position to simulate movement
+                // Include name field to satisfy Firebase validation rules
                 window.firebaseUpdate(playerRef, {
+                    name: `Player ${i}`,
                     timestamp: Date.now(),
                     lat: -31.9505 + (Math.random() - 0.5) * 0.02,
                     lng: 115.8605 + (Math.random() - 0.5) * 0.02

@@ -4,7 +4,7 @@
       ".read": true,
       "$uid": {
         ".write": true,
-        ".validate": "newData.hasChildren(['name', 'lat', 'lng', 'timestamp'])",
+        ".validate": "newData.hasChildren(['name', 'lat', 'lng', 'timestamp']) || data.exists()",
         "name":      { ".validate": "newData.isString() && newData.val().length <= 24" },
         "lat":       { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
         "lng":       { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
@@ -18,6 +18,7 @@
         "inRadZone": { ".validate": "newData.isBoolean()" },
         "photosTaken": { ".validate": "newData.isNumber() && newData.val() >= 0" },
         "avatar":    { ".validate": "newData.isString() && newData.val().length <= 100000" },
+        "isDemo":    { ".validate": "newData.isBoolean()" },
         "$other":    { ".validate": false }
       }
     },
