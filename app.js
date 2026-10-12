@@ -12146,6 +12146,14 @@
                 });
                 
                 console.log('[Chronicle] Generated', eventsGenerated, 'fluff events');
+                
+                // v0.258: Trigger immediate batch processing so events appear in chronicle right away
+                if (eventsGenerated > 0 && typeof processChronicleBatch === 'function') {
+                    setTimeout(() => {
+                        console.log('[Chronicle] Triggering immediate batch processing...');
+                        processChronicleBatch();
+                    }, 1000); // Small delay to ensure events are written to Firebase
+                }
             }).catch(err => {
                 console.error('[Chronicle] Error generating fluff events:', err);
             });
