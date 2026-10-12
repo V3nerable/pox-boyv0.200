@@ -12018,37 +12018,23 @@
                 return;
             }
             
-            let html = '<div class="chronicle-entries">';
+            // v0.266: Compact one-line format for maximum events
+            let html = '<div class="chronicle-entries-compact" style="font-size: 0.9rem; line-height: 1.5;">';
             
             chronicleEntries.forEach(entry => {
                 const time = new Date(entry.timestamp).toLocaleTimeString('en-US', { 
                     hour: '2-digit', 
-                    minute: '2-digit' 
+                    minute: '2-digit',
+                    hour12: false
                 });
                 
                 const day = entry.day || 1;
                 
-                // Parse related photos
-                const photos = entry.relatedPhotos ? entry.relatedPhotos.split(',').filter(Boolean) : [];
-                let photoHtml = '';
-                if (photos.length > 0) {
-                    photoHtml = '<div class="chronicle-photos">';
-                    photos.forEach(photo => {
-                        photoHtml += `<img src="${photo}" style="max-width: 200px; max-height: 150px; margin: 5px; border: 2px solid var(--pip-color); border-radius: 4px;">`;
-                    });
-                    photoHtml += '</div>';
-                }
-                
-                html += `
-                    <div class="chronicle-entry" data-event-type="${entry.eventType}">
-                        <div class="chronicle-header">
-                            <span class="chronicle-time">[${time}]</span>
-                            <span class="chronicle-day">Day ${day}</span>
-                        </div>
-                        <div class="chronicle-narrative">${entry.narrative}</div>
-                        ${photoHtml}
-                    </div>
-                `;
+                html += `<div class="chronicle-entry-compact" style="margin-bottom: 6px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">`;
+                html += `<span style="opacity: 0.6; font-family: monospace;">[${time}]</span> `;
+                html += `<span style="opacity: 0.7;">D${day}:</span> `;
+                html += `<span>${entry.narrative}</span>`;
+                html += `</div>`;
             });
             
             html += '</div>';
@@ -12072,37 +12058,23 @@
             
             console.log('[Chronicle] Rendering', chronicleEntries.length, 'entries');
             
-            let html = '<div class="chronicle-entries">';
+            // v0.266: Compact one-line format for maximum events
+            let html = '<div class="chronicle-entries-compact" style="font-size: 0.85rem; line-height: 1.4;">';
             
             chronicleEntries.forEach(entry => {
                 const time = new Date(entry.timestamp).toLocaleTimeString('en-US', { 
                     hour: '2-digit', 
-                    minute: '2-digit' 
+                    minute: '2-digit',
+                    hour12: false
                 });
                 
                 const day = entry.day || 1;
                 
-                // Parse related photos
-                const photos = entry.relatedPhotos ? entry.relatedPhotos.split(',').filter(Boolean) : [];
-                let photoHtml = '';
-                if (photos.length > 0) {
-                    photoHtml = '<div class="chronicle-photos">';
-                    photos.forEach(photo => {
-                        photoHtml += `<img src="${photo}" style="max-width: 200px; max-height: 150px; margin: 5px; border: 2px solid var(--pip-color); border-radius: 4px;">`;
-                    });
-                    photoHtml += '</div>';
-                }
-                
-                html += `
-                    <div class="chronicle-entry" data-event-type="${entry.eventType}">
-                        <div class="chronicle-header">
-                            <span class="chronicle-time">[${time}]</span>
-                            <span class="chronicle-day">Day ${day}</span>
-                        </div>
-                        <div class="chronicle-narrative">${entry.narrative}</div>
-                        ${photoHtml}
-                    </div>
-                `;
+                html += `<div class="chronicle-entry-compact" style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">`;
+                html += `<span style="opacity: 0.6; font-family: monospace;">[${time}]</span> `;
+                html += `<span style="opacity: 0.7;">D${day}:</span> `;
+                html += `<span>${entry.narrative}</span>`;
+                html += `</div>`;
             });
             
             html += '</div>';
