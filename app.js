@@ -11740,6 +11740,51 @@
             });
         }
         
+        // v0.258: Process chronicle batch immediately by fetching latest events from Firebase
+        function processChronicleBatchImmediate() {
+            if (!window.db) {
+                console.error('[Chronicle] Firebase not available for immediate batch processing');
+                return;
+            }
+            
+            console.log('[Chronicle] Fetching latest events for immediate processing...');
+            
+            window.firebaseGet(window.firebaseRef(window.db, 'chronicle/rawEvents'))
+                .then(snapshot => {
+                    const data = snapshot.val() || {};
+                    const allEvents = Object.keys(data).map(key => ({ id: key, ...data[key] }))
+                        .sort((a, b) => a.timestamp - b.timestamp);
+                    
+                    const now = Date.now();
+                    const thirtySecondsAgo = now - 30000;
+                    
+                    // Get events from last 30 seconds
+                    const recentEvents = allEvents.filter(e => e.timestamp >= thirtySecondsAgo);
+                    
+                    console.log('[Chronicle] Found', recentEvents.length, 'recent events for immediate processing');
+                    
+                    if (recentEvents.length === 0) return;
+                    
+                    // Group related events
+                    const grouped = groupRelatedEvents(recentEvents);
+                    
+                    // Generate narrative for each group
+                    let narrativesGenerated = 0;
+                    grouped.forEach(eventGroup => {
+                        const narrative = generateNarrative(eventGroup);
+                        if (narrative) {
+                            saveChronicleEntry(narrative);
+                            narrativesGenerated++;
+                        }
+                    });
+                    
+                    console.log('[Chronicle] Generated', narrativesGenerated, 'narratives from immediate processing');
+                })
+                .catch(err => {
+                    console.error('[Chronicle] Error fetching events for immediate processing:', err);
+                });
+        }
+        
         function groupRelatedEvents(events) {
             // Group events by type and time proximity
             const groups = [];
@@ -11873,14 +11918,25 @@
         function fillNarrativeTemplate(template, users, eventGroup) {
             const userNames = users.map(u => u.userName).join(', ');
             const mainEvent = eventGroup[0];
-            const rads = mainEvent.data?.rads || 0;
-            const mutation = mainEvent.data?.mutation || 'something weird';
-            const zone = mainEvent.data?.zone || 'a mysterious location';
-            const distance = mainEvent.data?.distance || 0;
-            const dose = mainEvent.data?.dose || 0;
-            const contactName = mainEvent.data?.contactName || 'someone';
-            const count = mainEvent.data?.count || 0;
-            const narrative = mainEvent.data?.narrative || '';
+            
+            // v0.259: Parse data if it's a string (Firebase stores it as JSON string)
+            let eventData = mainEvent.data;
+            if (typeof eventData === 'string') {
+                try {
+                    eventData = JSON.parse(eventData);
+                } catch (e) {
+                    eventData = {};
+                }
+            }
+            
+            const rads = eventData?.rads || 0;
+            const mutation = eventData?.mutation || 'something weird';
+            const zone = eventData?.zone || 'a mysterious location';
+            const distance = eventData?.distance || 0;
+            const dose = eventData?.dose || 0;
+            const contactName = eventData?.contactName || 'someone';
+            const count = eventData?.count || 0;
+            const narrative = eventData?.narrative || '';
             
             return template
                 .replace(/{users}/g, userNames)
@@ -12148,11 +12204,11 @@
                 console.log('[Chronicle] Generated', eventsGenerated, 'fluff events');
                 
                 // v0.258: Trigger immediate batch processing so events appear in chronicle right away
-                if (eventsGenerated > 0 && typeof processChronicleBatch === 'function') {
+                if (eventsGenerated > 0 && typeof processChronicleBatchImmediate === 'function') {
                     setTimeout(() => {
                         console.log('[Chronicle] Triggering immediate batch processing...');
-                        processChronicleBatch();
-                    }, 1000); // Small delay to ensure events are written to Firebase
+                        processChronicleBatchImmediate();
+                    }, 2000); // Wait 2 seconds to ensure events are written to Firebase and listener has updated
                 }
             }).catch(err => {
                 console.error('[Chronicle] Error generating fluff events:', err);
