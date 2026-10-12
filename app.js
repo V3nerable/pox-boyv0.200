@@ -12496,3 +12496,169 @@
         }
 
         // v0.130: Overseer map control functions
+        
+        // v0.274: Fresh Slate Reset - Triple confirmation with separate password
+        function confirmFreshSlateReset() {
+            showCustomPrompt(
+                '⚠️ WARNING: FRESH SLATE RESET ⚠️\n\n' +
+                'This will PERMANENTLY DELETE:\n' +
+                '• All player stats (HP, rads, mutations, quests, bounties, photos)\n' +
+                '• All quests (active, completed, issued)\n' +
+                '• All mail and messages\n' +
+                '• All photos in databank\n' +
+                '• All chronicle entries\n' +
+                '• All bounties and contracts\n\n' +
+                'PRESERVED:\n' +
+                '• Player profiles (name, SPECIAL, origin, trait, perk)\n' +
+                '• Rad zones, shared pins, event fence\n' +
+                '• Overseer accounts and settings\n\n' +
+                'This action CANNOT be undone!\n\n' +
+                'Click CONFIRM to proceed to step 2 of 3.',
+                [
+                    { label: 'CONFIRM - I UNDERSTAND', color: '#ff3333', action: () => confirmFreshSlateStep2() },
+                    { label: 'CANCEL', action: () => {} }
+                ]
+            );
+        }
+        
+        function confirmFreshSlateStep2() {
+            showCustomPrompt(
+                '⚠️ FINAL WARNING ⚠️\n\n' +
+                'You are about to wipe ALL player progress and game data.\n\n' +
+                'This is typically done BEFORE an event starts to give everyone a fresh start.\n\n' +
+                'Are you ABSOLUTELY SURE you want to proceed?\n\n' +
+                'Click YES to proceed to password entry (step 3 of 3).',
+                [
+                    { label: 'YES - PROCEED TO PASSWORD', color: '#ff3333', action: () => confirmFreshSlateStep3() },
+                    { label: 'NO - CANCEL', action: () => {} }
+                ]
+            );
+        }
+        
+        function confirmFreshSlateStep3() {
+            showCustomPrompt(
+                '🔐 ENTER FRESH SLATE PASSWORD 🔐\n\n' +
+                'Enter the reset password to confirm:\n' +
+                '(This is different from the overseer password)',
+                [
+                    { label: 'ENTER PASSWORD', action: () => promptFreshSlatePassword() }
+                ]
+            );
+        }
+        
+        function promptFreshSlatePassword() {
+            const password = prompt('Enter Fresh Slate password:');
+            if (password === 'FRESHSLATE2026') {
+                executeFreshSlateReset();
+            } else if (password !== null) {
+                showNotification('INCORRECT PASSWORD. RESET CANCELLED.');
+            }
+        }
+        
+        async function executeFreshSlateReset() {
+            showNotification('EXECUTING FRESH SLATE RESET...');
+            
+            try {
+                // Reset all player stats in wastelanders
+                const wastelandersRef = window.firebaseRef(window.db, 'wastelanders');
+                const wastelandersSnap = await window.firebaseGet(wastelandersRef);
+                const wastelanders = wastelandersSnap.val() || {};
+                
+                const resetPromises = [];
+                
+                for (const [uid, player] of Object.entries(wastelanders)) {
+                    // Preserve: name, lat, lng, timestamp, SPECIAL, origin, trait, perk
+                    // Reset: hp, rads, radsLifetime, mutations, glowingOne, inMedZone, inRadZone, photosTaken, etc.
+                    const resetData = {
+                        name: player.name,
+                        lat: player.lat,
+                        lng: player.lng,
+                        timestamp: player.timestamp,
+                        hp: 100,
+                        rads: 0,
+                        radsLifetime: 0,
+                        mutations: 0,
+                        glowingOne: false,
+                        inMedZone: false,
+                        inRadZone: false,
+                        photosTaken: 0
+                    };
+                    
+                    // Preserve SPECIAL if exists
+                    if (player.special) resetData.special = player.special;
+                    
+                    const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
+                    resetPromises.push(window.firebaseSet(playerRef, resetData));
+                }
+                
+                await Promise.all(resetPromises);
+                console.log('[FreshSlate] Reset', resetPromises.length, 'player stats');
+                
+                // Clear all quests
+                const questsRef = window.firebaseRef(window.db, 'quests');
+                await window.firebaseSet(questsRef, null);
+                console.log('[FreshSlate] Cleared all quests');
+                
+                // Clear all mail
+                const mailRef = window.firebaseRef(window.db, 'mail');
+                await window.firebaseSet(mailRef, null);
+                console.log('[FreshSlate] Cleared all mail');
+                
+                // Clear all bounties
+                const bountiesRef = window.firebaseRef(window.db, 'bounties');
+                await window.firebaseSet(bountiesRef, null);
+                console.log('[FreshSlate] Cleared all bounties');
+                
+                // Clear all global contracts
+                const globalContractsRef = window.firebaseRef(window.db, 'globalContracts');
+                await window.firebaseSet(globalContractsRef, null);
+                console.log('[FreshSlate] Cleared all global contracts');
+                
+                // Clear all surrender codes
+                const surrenderCodesRef = window.firebaseRef(window.db, 'surrenderCodes');
+                await window.firebaseSet(surrenderCodesRef, null);
+                console.log('[FreshSlate] Cleared all surrender codes');
+                
+                // Clear all chronicle entries
+                const chronicleRef = window.firebaseRef(window.db, 'chronicle');
+                await window.firebaseSet(chronicleRef, null);
+                console.log('[FreshSlate] Cleared all chronicle entries');
+                
+                // Clear local photos from IndexedDB
+                if (typeof PhotoDB !== 'undefined' && PhotoDB.db) {
+                    await PhotoDB.clear();
+                    console.log('[FreshSlate] Cleared IndexedDB photos');
+                }
+                
+                // Clear local photos from localStorage
+                localStorage.removeItem('pipboy-photos');
+                photoArchive = [];
+                console.log('[FreshSlate] Cleared localStorage photos');
+                
+                // Clear local quest data
+                localStorage.removeItem('pipboy-quests');
+                console.log('[FreshSlate] Cleared localStorage quests');
+                
+                // Clear local mail data
+                localStorage.removeItem('pipboy-mail');
+                localStorage.removeItem('pipboy-maillog');
+                localStorage.removeItem('pipboy-outbox');
+                console.log('[FreshSlate] Cleared localStorage mail');
+                
+                // Clear chronicle data
+                chronicleEntries = [];
+                rawEvents = [];
+                console.log('[FreshSlate] Cleared chronicle arrays');
+                
+                showNotification('✅ FRESH SLATE COMPLETE - ALL DATA RESET');
+                
+                // Refresh overseer display
+                setTimeout(() => {
+                    updateOverseerDisplay();
+                }, 1000);
+                
+            } catch (err) {
+                console.error('[FreshSlate] Reset failed:', err);
+                showNotification('❌ RESET FAILED: ' + err.message);
+            }
+        }
