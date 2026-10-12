@@ -12018,7 +12018,7 @@
                 return;
             }
             
-            // v0.266: Compact one-line format for maximum events
+            // v0.267: Compact one-line format with highlighted player names
             let html = '<div class="chronicle-entries-compact" style="font-size: 0.9rem; line-height: 1.5;">';
             
             chronicleEntries.forEach(entry => {
@@ -12030,10 +12030,22 @@
                 
                 const day = entry.day || 1;
                 
+                // v0.268: Highlight player names in bold blue
+                let narrative = entry.narrative;
+                if (entry.affectedUsers) {
+                    const users = entry.affectedUsers.split(',').map(u => u.trim());
+                    users.forEach(user => {
+                        if (user) {
+                            const regex = new RegExp(`\\b${user}\\b`, 'g');
+                            narrative = narrative.replace(regex, `<strong style="color: #4a90e2;">${user}</strong>`);
+                        }
+                    });
+                }
+                
                 html += `<div class="chronicle-entry-compact" style="margin-bottom: 6px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">`;
                 html += `<span style="opacity: 0.6; font-family: monospace;">[${time}]</span> `;
                 html += `<span style="opacity: 0.7;">D${day}:</span> `;
-                html += `<span>${entry.narrative}</span>`;
+                html += `<span>${narrative}</span>`;
                 html += `</div>`;
             });
             
@@ -12070,10 +12082,22 @@
                 
                 const day = entry.day || 1;
                 
+                // v0.268: Highlight player names in bold blue
+                let narrative = entry.narrative;
+                if (entry.affectedUsers) {
+                    const users = entry.affectedUsers.split(',').map(u => u.trim());
+                    users.forEach(user => {
+                        if (user) {
+                            const regex = new RegExp(`\\b${user}\\b`, 'g');
+                            narrative = narrative.replace(regex, `<strong style="color: #4a90e2;">${user}</strong>`);
+                        }
+                    });
+                }
+                
                 html += `<div class="chronicle-entry-compact" style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">`;
                 html += `<span style="opacity: 0.6; font-family: monospace;">[${time}]</span> `;
                 html += `<span style="opacity: 0.7;">D${day}:</span> `;
-                html += `<span>${entry.narrative}</span>`;
+                html += `<span>${narrative}</span>`;
                 html += `</div>`;
             });
             
@@ -12130,25 +12154,78 @@
         }
         
         // v0.252: Generate ambient "fluff" events for live wasteland chronicle
+        // v0.269: Chronicle frequency control
+        let chronicleIntervalId = null;
+        let chronicleFrequency = 60000; // Default 60 seconds
+        
         function startFluffEventGeneration() {
             console.log('[Chronicle] Starting fluff event generation...');
             
             // Generate demo players for testing
             generateDemoPlayers();
             
-            // Run every 60 seconds
-            setInterval(() => {
+            // Clear any existing interval
+            if (chronicleIntervalId) {
+                clearInterval(chronicleIntervalId);
+            }
+            
+            // Run at configured frequency
+            chronicleIntervalId = setInterval(() => {
                 if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
                     console.log('[Chronicle] Overseer display open, generating fluff events...');
                     generateFluffEvents();
                 }
-            }, 60000);
+            }, chronicleFrequency);
             
             // Generate initial events immediately
             setTimeout(() => {
                 console.log('[Chronicle] Generating initial fluff events...');
                 generateFluffEvents();
             }, 2000);
+        }
+        
+        // v0.269: Manual refresh function
+        function refreshChronicleNow() {
+            console.log('[Chronicle] Manual refresh triggered');
+            if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                generateFluffEvents();
+                showNotification('CHRONICLE REFRESHED');
+            } else {
+                showNotification('OVERSEER DISPLAY NOT OPEN');
+            }
+        }
+        
+        // v0.269: Update chronicle frequency
+        function updateChronicleFrequency() {
+            const select = document.getElementById('chronicle-frequency');
+            if (!select) return;
+            
+            const newFrequency = parseInt(select.value);
+            console.log('[Chronicle] Updating frequency to', newFrequency, 'ms');
+            
+            chronicleFrequency = newFrequency;
+            
+            // Restart the interval with new frequency
+            if (chronicleIntervalId) {
+                clearInterval(chronicleIntervalId);
+            }
+            
+            chronicleIntervalId = setInterval(() => {
+                if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                    console.log('[Chronicle] Overseer display open, generating fluff events...');
+                    generateFluffEvents();
+                }
+            }, chronicleFrequency);
+            
+            const frequencyLabels = {
+                10000: '10 seconds',
+                30000: '30 seconds',
+                60000: '1 minute',
+                120000: '2 minutes',
+                300000: '5 minutes'
+            };
+            
+            showNotification('CHRONICLE FREQUENCY: ' + (frequencyLabels[newFrequency] || newFrequency + 'ms'));
         }
         
         function generateDemoPlayers() {
