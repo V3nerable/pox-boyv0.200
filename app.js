@@ -183,6 +183,122 @@
                 console.error('[Factions] Error listening to official factions:', error);
             });
         }
+        
+        // v0.277: Overseer management interface for official factions
+        function openOfficialFactionsManager() {
+            if (!window.db) {
+                showNotification('FIREBASE NOT AVAILABLE');
+                return;
+            }
+            
+            showCustomPrompt(
+                '🔵 OFFICIAL FACTIONS MANAGER\n\n' +
+                'Official factions sync to ALL users in real-time.\n' +
+                'Changes propagate instantly across all devices.\n\n' +
+                'Current official factions: ' + officialFactions.length + '\n\n' +
+                'Choose an action:',
+                [
+                    { label: '➕ ADD NEW FACTION', action: () => showAddOfficialFactionForm() },
+                    { label: '✏️ EDIT FACTION', action: () => showEditOfficialFactionPicker() },
+                    { label: '🗑️ DELETE FACTION', color: '#ff3333', action: () => showDeleteOfficialFactionPicker() },
+                    { label: 'CANCEL', action: () => {} }
+                ]
+            );
+        }
+        
+        function showAddOfficialFactionForm() {
+            showCustomPrompt(
+                '➕ ADD OFFICIAL FACTION\n\n' +
+                'Enter faction details:',
+                [
+                    { label: 'OPEN FORM', action: () => {
+                        document.getElementById('fac-name').value = '';
+                        document.getElementById('fac-rep').value = '0';
+                        document.getElementById('fac-blurb').value = '';
+                        document.getElementById('fac-bio').value = '';
+                        document.getElementById('fac-leader').value = '';
+                        document.getElementById('fac-members').value = '';
+                        document.getElementById('add-faction-modal').style.display = 'flex';
+                        document.getElementById('add-faction-modal').dataset.official = 'true';
+                    }}
+                ]
+            );
+        }
+        
+        function showEditOfficialFactionPicker() {
+            if (officialFactions.length === 0) {
+                showNotification('NO OFFICIAL FACTIONS TO EDIT');
+                return;
+            }
+            
+            const buttons = officialFactions.map(f => ({
+                label: f.name,
+                action: () => showEditOfficialFactionForm(f.id)
+            }));
+            buttons.push({ label: 'CANCEL', action: () => {} });
+            
+            showCustomPrompt('✏️ SELECT FACTION TO EDIT:', buttons);
+        }
+        
+        function showEditOfficialFactionForm(factionId) {
+            const f = officialFactions.find(fac => fac.id === factionId);
+            if (!f) {
+                showNotification('FACTION NOT FOUND');
+                return;
+            }
+            
+            // Populate edit form with faction data
+            document.getElementById('fac-edit-name').value = f.name || '';
+            document.getElementById('fac-edit-blurb').value = f.blurb || f.description || '';
+            document.getElementById('fac-edit-bio').value = f.bio || '';
+            document.getElementById('fac-edit-leader').value = f.leader || '';
+            document.getElementById('fac-edit-members').value = (f.members || []).join(', ');
+            
+            facEditId = factionId;
+            document.getElementById('edit-faction-modal').dataset.official = 'true';
+            document.getElementById('edit-faction-modal').style.display = 'flex';
+        }
+        
+        function showDeleteOfficialFactionPicker() {
+            if (officialFactions.length === 0) {
+                showNotification('NO OFFICIAL FACTIONS TO DELETE');
+                return;
+            }
+            
+            const buttons = officialFactions.map(f => ({
+                label: f.name,
+                color: '#ff3333',
+                action: () => confirmDeleteOfficialFaction(f.id, f.name)
+            }));
+            buttons.push({ label: 'CANCEL', action: () => {} });
+            
+            showCustomPrompt('🗑️ SELECT FACTION TO DELETE:', buttons);
+        }
+        
+        function confirmDeleteOfficialFaction(factionId, factionName) {
+            showCustomPrompt(
+                '⚠️ DELETE OFFICIAL FACTION?\n\n' +
+                `"${factionName}"\n\n` +
+                'This will remove the faction from ALL users.\n' +
+                'User reputation for this faction will be preserved locally.\n\n' +
+                'Are you sure?',
+                [
+                    { label: 'YES - DELETE', color: '#ff3333', action: () => deleteOfficialFaction(factionId) },
+                    { label: 'NO - CANCEL', action: () => {} }
+                ]
+            );
+        }
+        
+        async function deleteOfficialFaction(factionId) {
+            try {
+                const factionRef = window.firebaseRef(window.db, `officialFactions/${factionId}`);
+                await window.firebaseRemove(factionRef);
+                showNotification('✅ OFFICIAL FACTION DELETED');
+            } catch (err) {
+                console.error('[Factions] Error deleting official faction:', err);
+                showNotification('❌ DELETE FAILED: ' + err.message);
+            }
+        }
 
         // v0.59: DEFAULT WAYPOINTS with version-based merge for existing users
         const DEFAULT_WAYPOINTS = [
@@ -4412,20 +4528,68 @@
             const rep = parseInt(document.getElementById('fac-rep').value, 10) || 0;
             const blurb = document.getElementById('fac-blurb').value.trim() || 'No data available.';
             const bio = document.getElementById('fac-bio').value.trim() || '';
+            const leader = document.getElementById('fac-leader').value.trim() || '';
             const rawMembers = document.getElementById('fac-members').value;
             const members = rawMembers ? rawMembers.split(',').map(m => m.trim()) : [];
             
-            factions.push({ id: Date.now(), name: name.toUpperCase(), rep: rep, blurb: blurb, bio: bio, members: members });
-            saveToStorage();
-            if (currentDataTab === 'factions') renderFactions();
-            closeModals();
+            const isOfficial = document.getElementById('add-faction-modal').dataset.official === 'true';
+            
+            if (isOfficial && window.db) {
+                // Save to Firebase as official faction
+                const factionData = {
+                    name: name.toUpperCase(),
+                    description: blurb,
+                    blurb: blurb,
+                    bio: bio,
+                    leader: leader,
+                    members: members,
+                    startingRep: rep,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                };
+                
+                const factionRef = window.firebaseRef(window.db, 'officialFactions');
+                window.firebasePush(factionRef, factionData)
+                    .then(() => {
+                        showNotification('✅ OFFICIAL FACTION ADDED');
+                        closeModals();
+                        delete document.getElementById('add-faction-modal').dataset.official;
+                    })
+                    .catch(err => {
+                        console.error('[Factions] Error adding official faction:', err);
+                        showNotification('❌ ADD FAILED: ' + err.message);
+                    });
+            } else {
+                // Save to localStorage as personal faction
+                personalFactions.push({ 
+                    id: 'personal-' + Date.now(), 
+                    name: name.toUpperCase(), 
+                    blurb: blurb, 
+                    bio: bio,
+                    leader: leader,
+                    members: members 
+                });
+                localStorage.setItem('pipboy-factions', JSON.stringify(personalFactions));
+                setFactionRep('personal-' + Date.now(), rep);
+                
+                if (currentDataTab === 'factions') renderFactions();
+                closeModals();
+                showNotification('✅ PERSONAL FACTION ADDED');
+            }
         }
 
         // v0.55: which faction the editor is pointed at (themed picker replaced the select)
         let facEditId = null;
         function pickFactionToEdit() {
-            if (!factions.length) { showNotification('NO FACTIONS ON FILE.'); return; }
-            const buttons = factions.map(f => ({
+            const allFactions = getFactions();
+            const personalOnly = allFactions.filter(f => !f.isOfficial);
+            
+            if (!personalOnly.length) { 
+                showNotification('NO PERSONAL FACTIONS ON FILE. Use 🔵 FACTIONS button in overseer to manage official factions.'); 
+                return; 
+            }
+            
+            const buttons = personalOnly.map(f => ({
                 label: (f.name || 'UNKNOWN').toUpperCase(),
                 action: () => {
                     facEditId = f.id;
@@ -4434,51 +4598,133 @@
                 }
             }));
             buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
-            showCustomPrompt('EDIT WHICH FACTION?', buttons);
+            showCustomPrompt('EDIT WHICH PERSONAL FACTION?', buttons);
         }
 
         function populateEditFaction() {
-            const id = facEditId; // v0.55
-            const f = factions.find(fac => fac.id === id);
+            const id = facEditId;
+            const allFactions = getFactions();
+            const f = allFactions.find(fac => fac.id === id);
+            
             if (f) {
                 document.getElementById('edit-fac-name').value = f.name;
-                document.getElementById('edit-fac-rep').value = f.rep;
-                document.getElementById('edit-fac-blurb').value = f.blurb;
+                document.getElementById('edit-fac-blurb').value = f.blurb || f.description || '';
                 document.getElementById('edit-fac-bio').value = f.bio || '';
+                document.getElementById('edit-fac-leader').value = f.leader || '';
                 document.getElementById('edit-fac-members').value = f.members ? f.members.join(', ') : '';
+                
+                // Disable editing if official faction
+                const isOfficial = f.isOfficial;
+                document.getElementById('edit-fac-name').disabled = isOfficial;
+                document.getElementById('edit-fac-blurb').disabled = isOfficial;
+                document.getElementById('edit-fac-bio').disabled = isOfficial;
+                document.getElementById('edit-fac-leader').disabled = isOfficial;
+                document.getElementById('edit-fac-members').disabled = isOfficial;
+                
+                if (isOfficial) {
+                    showNotification('⚠️ OFFICIAL FACTIONS CAN ONLY BE EDITED VIA OVERSEER MANAGER');
+                }
             } else {
                 document.getElementById('edit-fac-name').value = '';
-                document.getElementById('edit-fac-rep').value = '';
                 document.getElementById('edit-fac-blurb').value = '';
                 document.getElementById('edit-fac-bio').value = '';
+                document.getElementById('edit-fac-leader').value = '';
                 document.getElementById('edit-fac-members').value = '';
             }
         }
 
         function saveEditFaction() {
-            const id = facEditId; // v0.55
-            const f = factions.find(fac => fac.id === id);
-            if (f) {
-                f.name = (document.getElementById('edit-fac-name').value.trim() || 'UNKNOWN FACTION').toUpperCase();
-                f.rep = parseInt(document.getElementById('edit-fac-rep').value, 10) || 0;
-                f.blurb = document.getElementById('edit-fac-blurb').value.trim() || 'No data available.';
-                f.bio = document.getElementById('edit-fac-bio').value.trim() || '';
+            const id = facEditId;
+            const isOfficial = document.getElementById('edit-faction-modal').dataset.official === 'true';
+            
+            if (isOfficial && window.db) {
+                // Edit official faction in Firebase
+                const name = (document.getElementById('edit-fac-name').value.trim() || 'UNKNOWN FACTION').toUpperCase();
+                const blurb = document.getElementById('edit-fac-blurb').value.trim() || 'No data available.';
+                const bio = document.getElementById('edit-fac-bio').value.trim() || '';
+                const leader = document.getElementById('edit-fac-leader').value.trim() || '';
                 const rawMembers = document.getElementById('edit-fac-members').value;
-                f.members = rawMembers ? rawMembers.split(',').map(m => m.trim()).filter(m => m !== '') : [];
+                const members = rawMembers ? rawMembers.split(',').map(m => m.trim()).filter(m => m !== '') : [];
                 
-                saveToStorage();
-                if (currentDataTab === 'factions') renderFactions();
-                closeModals();
+                const factionData = {
+                    name: name,
+                    description: blurb,
+                    blurb: blurb,
+                    bio: bio,
+                    leader: leader,
+                    members: members,
+                    updatedAt: Date.now()
+                };
+                
+                const factionRef = window.firebaseRef(window.db, `officialFactions/${id}`);
+                window.firebaseUpdate(factionRef, factionData)
+                    .then(() => {
+                        showNotification('✅ OFFICIAL FACTION UPDATED');
+                        closeModals();
+                        delete document.getElementById('edit-faction-modal').dataset.official;
+                    })
+                    .catch(err => {
+                        console.error('[Factions] Error updating official faction:', err);
+                        showNotification('❌ UPDATE FAILED: ' + err.message);
+                    });
+            } else {
+                // Edit personal faction in localStorage
+                const f = personalFactions.find(fac => fac.id === id);
+                if (f) {
+                    f.name = (document.getElementById('edit-fac-name').value.trim() || 'UNKNOWN FACTION').toUpperCase();
+                    f.blurb = document.getElementById('edit-fac-blurb').value.trim() || 'No data available.';
+                    f.bio = document.getElementById('edit-fac-bio').value.trim() || '';
+                    f.leader = document.getElementById('edit-fac-leader').value.trim() || '';
+                    const rawMembers = document.getElementById('edit-fac-members').value;
+                    f.members = rawMembers ? rawMembers.split(',').map(m => m.trim()).filter(m => m !== '') : [];
+                    
+                    localStorage.setItem('pipboy-factions', JSON.stringify(personalFactions));
+                    if (currentDataTab === 'factions') renderFactions();
+                    closeModals();
+                    showNotification('✅ PERSONAL FACTION UPDATED');
+                }
             }
         }
 
         function deleteFaction() {
-            if (facEditId === null) { showNotification('PICK A FACTION FIRST.'); return; } // v0.55
+            if (facEditId === null) { showNotification('PICK A FACTION FIRST.'); return; }
             const id = facEditId;
-            factions = factions.filter(fac => fac.id !== id);
-            saveToStorage();
-            if (currentDataTab === 'factions') renderFactions();
-            closeModals();
+            const isOfficial = id && !id.startsWith('personal-');
+            
+            if (isOfficial && window.db) {
+                // Delete official faction from Firebase
+                showCustomPrompt(
+                    '⚠️ DELETE OFFICIAL FACTION?\n\n' +
+                    'This will remove the faction from ALL users.\n' +
+                    'Are you sure?',
+                    [
+                        { label: 'YES - DELETE', color: '#ff3333', action: async () => {
+                            try {
+                                const factionRef = window.firebaseRef(window.db, `officialFactions/${id}`);
+                                await window.firebaseRemove(factionRef);
+                                showNotification('✅ OFFICIAL FACTION DELETED');
+                                closeModals();
+                            } catch (err) {
+                                console.error('[Factions] Error deleting official faction:', err);
+                                showNotification('❌ DELETE FAILED: ' + err.message);
+                            }
+                        }},
+                        { label: 'NO - CANCEL', action: () => {} }
+                    ]
+                );
+            } else {
+                // Delete personal faction from localStorage
+                personalFactions = personalFactions.filter(fac => fac.id !== id);
+                localStorage.setItem('pipboy-factions', JSON.stringify(personalFactions));
+                
+                // Also remove user's reputation for this faction
+                delete factionReps[id];
+                localStorage.setItem('pipboy-faction-reps', JSON.stringify(factionReps));
+                
+                if (currentDataTab === 'factions') renderFactions();
+                closeModals();
+                showNotification('✅ PERSONAL FACTION DELETED');
+            }
         }
 
         let activeQuestId = null;
