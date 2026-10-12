@@ -10907,16 +10907,6 @@
             if (chronicleSubNav) chronicleSubNav.style.display = 'block';
         }
 
-        // v0.201: Auto-archive old data on app startup (once per 24 hours)
-        try {
-            if (typeof checkAndArchiveOldData === 'function') {
-                checkAndArchiveOldData(false);
-            }
-        } catch (e) {
-            console.error('Error during auto-archive on startup:', e);
-            // Don't let archive errors prevent app from loading
-        }
-
         // v0.210: Initialize IndexedDB photo storage (much higher limits than localStorage)
         try {
             if (typeof initPhotoStorage === 'function') {
@@ -12021,8 +12011,17 @@
         // Initialize chronicle system
         if (localStorage.getItem('pipboy-dev-mode') === 'true') {
             startChronicleListener();
-            // v0.252: Start fluff event generation for live chronicle demo
-            startFluffEventGeneration();
+            // v0.255: Start fluff event generation for live chronicle demo (wait for Firebase)
+            const startFluffWhenReady = () => {
+                if (window.db) {
+                    console.log('[Chronicle] Firebase ready, starting fluff event generation...');
+                    startFluffEventGeneration();
+                } else {
+                    console.log('[Chronicle] Waiting for Firebase to initialize...');
+                    setTimeout(startFluffWhenReady, 500);
+                }
+            };
+            startFluffWhenReady();
         }
         
         // v0.252: Generate ambient "fluff" events for live wasteland chronicle
