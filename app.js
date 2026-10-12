@@ -2427,9 +2427,9 @@
         }
         
         function addStage() {
-            // v0.223: Only BOUNTY and PHOTO quest types
+            // v0.287: BOUNTY and PHOTO stages (both use photo evidence)
             showCustomPrompt('SELECT STAGE TYPE', [
-                { label: '☠ BOUNTY (scan target datacard)', action: () => addStageOfType('bounty') },
+                { label: '☠ BOUNTY (hunt target, photo evidence)', action: () => addStageOfType('bounty') },
                 { label: '📷 PHOTO (take/submit photo)', action: () => addStageOfType('photo') },
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
@@ -2503,14 +2503,8 @@
             
             // v0.160: Bounty stage needs target picker
             let bountyField = '';
-            if (stage.type === 'bounty') {
-                bountyField = `
-                    <div class="form-group">
-                        <label>BOUNTY TARGET</label>
-                        <input type="text" id="edit-stage-target-display" class="pip-input" readonly placeholder="SELECT TARGET..." value="${escapeHtml(stage.targetName || '')}" onclick="pickStageBountyTarget(${idx})" style="cursor:pointer;">
-                        <input type="hidden" id="edit-stage-target" value="${stage.targetUid || ''}">
-                    </div>`;
-            }
+            // v0.287: Bounty stages no longer have target picker (use description instead)
+            let bountyField = '';
             
             stageSection.innerHTML = `
                 <h3>EDIT STAGE ${idx + 1} — ${stage.type.toUpperCase()}</h3>
@@ -2668,15 +2662,8 @@
                         return;
                     }
                     // v0.160: Bounty stages need a target
-                    if (stage.type === 'bounty' && !stage.targetUid) {
-                        showError('STAGE ' + (i + 1) + ' (BOUNTY) NEEDS A TARGET — TAP EDIT DETAILS TO SELECT');
-                        return;
-                    }
-                    // v0.160: Scan-code stages need a QR code
-                    if (stage.type === 'scan-code' && !stage.qrCode) {
-                        showError('STAGE ' + (i + 1) + ' (SCAN-CODE) NEEDS A QR CODE — TAP EDIT DETAILS TO SET');
-                        return;
-                    }
+                // v0.287: Bounty stages no longer require target (use description instead)
+                // Scan-code stages removed (use photo evidence instead)
                 }
                 
                 // Create multi-stage quest
@@ -2709,9 +2696,7 @@
                         title: stage.title,
                         description: stage.description || '',
                         reward: stage.reward || null,
-                        qrCode: stage.qrCode || null,
-                        targetUid: stage.targetUid || null,
-                        targetName: stage.targetName || null,
+                        // v0.287: Removed qrCode, targetUid, targetName (use description instead)
                         timeLimit: stage.timeLimit || null,
                         status: idx === 0 ? 'available' : 'locked',
                         completedBy: null,
@@ -3093,22 +3078,14 @@
                 } else if (isAccepted && !isCompleted && !isVerified && currentStageIdx >= 0) {
                     const currentStage = stages[currentStageIdx];
                     
-                    if (currentStage.type === 'photo' || currentStage.type === 'location') {
+                    // v0.287: All stage types use "SUBMIT EVIDENCE" (photo evidence)
+                    if (currentStage.type === 'photo' || currentStage.type === 'location' || currentStage.type === 'bounty') {
                         buttons.push({ 
-                            label: `📷 SUBMIT ${currentStage.type.toUpperCase()} EVIDENCE`, 
+                            label: `📷 SUBMIT EVIDENCE`, 
                             action: () => submitMultiStagePhoto(id, currentStageIdx) 
                         });
-                    } else if (currentStage.type === 'bounty') {
-                        buttons.push({ 
-                            label: `🎯 SCAN BOUNTY TARGET`, 
-                            action: () => scanMultiStageBountyTarget(id, currentStageIdx) 
-                        });
-                    } else if (currentStage.type === 'scan-code') {
-                        buttons.push({ 
-                            label: `📱 SCAN QR CODE`, 
-                            action: () => scanMultiStageCode(id, currentStageIdx) 
-                        });
                     }
+                    // v0.287: Removed scan-code stage type (use photo evidence instead)
                     
                     buttons.push({ label: 'ABANDON QUEST', color: '#ff3333', action: () => abandonMultiStageQuest(id) });
                 } else if (isCompleted || isVerified) {
@@ -3381,15 +3358,7 @@
             updates[`stages/${stage.id}`] = stageUpdate;
             console.log('[Multi-Stage] Stage update:', JSON.stringify(updates));
             
-            // v0.230: Mark bounty stages as globally claimed
-            const questUpdates = {};
-            if (stage.type === 'bounty') {
-                questUpdates.status = 'bounty_claimed';
-                questUpdates.bountyClaimedBy = myUid;
-                questUpdates.bountyClaimedByName = userProfile.name || 'UNKNOWN';
-                questUpdates.bountyClaimedAt = Date.now();
-                console.log('[Multi-Stage] Bounty stage completed, marking as globally claimed');
-            }
+            // v0.287: Removed bounty_claimed logic (no longer using scan-based completion)
             
             // Check if all stages completed
             const allStagesCompleted = stages.every((s, idx) => {
@@ -3430,31 +3399,9 @@
                     playSound('level-up');
                     
                     if (allStagesCompleted) {
-                        // v0.229: Check if all stages are bounty type (auto-verify, no issuer verification needed)
-                        const allBountyStages = stages.every(s => s.type === 'bounty');
-                        
-                        if (allBountyStages) {
-                            // Auto-verify bounty-only quests (scan = proof)
-                            updates.status = 'verified';
-                            updates.verifiedAt = Date.now();
-                            updates.verifiedBy = 'auto';
-                            updates.verifiedByName = 'AUTO-VERIFIED (BOUNTY SCAN)';
-                            
-                            const verifyRef = window.firebaseRef(window.db, `quests/${questId}/progress/${myUid}`);
-                            window.firebaseUpdate(verifyRef, {
-                                status: 'verified',
-                                verifiedAt: Date.now(),
-                                verifiedBy: 'auto',
-                                verifiedByName: 'AUTO-VERIFIED (BOUNTY SCAN)'
-                            }).then(() => {
-                                showQuestStatusModal('verified', q.title || 'UNKNOWN', 'All bounty stages scanned');
-                                playSound('levelUp');
-                            });
-                        } else {
-                            // Has photo/other stages - needs issuer verification
-                            showQuestStatusModal('completed', q.title || 'UNKNOWN');
-                            sendMultiStageVerificationRequest(questId);
-                        }
+                        // v0.287: All quests require issuer verification (no auto-verify for bounty)
+                        showQuestStatusModal('completed', q.title || 'UNKNOWN');
+                        sendMultiStageVerificationRequest(questId);
                     } else {
                         showNotification(`STAGE ${stageIdx + 1} COMPLETED - STAGE ${stageIdx + 2} UNLOCKED`);
                         // Re-open modal to show next stage
@@ -5367,8 +5314,11 @@
                 zoomOffset: -1
             });
             
-            // Add dark tiles by default
-            darkTileLayer.addTo(pipMap);
+            // v0.285: Add satellite tiles by default instead of dark tiles
+            satelliteTileLayer.addTo(pipMap);
+            satelliteMode = true;
+            // Apply green overlay filter for satellite
+            document.documentElement.style.setProperty('--tile-filter', 'sepia(100%) hue-rotate(70deg) saturate(400%) brightness(0.6) contrast(1.1) opacity(0.9)');
             
             // Listen for long-press / right-click
             pipMap.on('contextmenu', function(e) {
