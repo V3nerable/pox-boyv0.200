@@ -4567,6 +4567,7 @@
                 const buttons = allFactions.map(f => ({
                     label: (f.name || 'UNKNOWN').toUpperCase(),
                     action: () => {
+                        closeModals(); // Close the picker modal first
                         facEditId = f.id;
                         document.getElementById('edit-fac-name').value = f.name;
                         document.getElementById('edit-fac-blurb').value = f.blurb || f.description || '';
