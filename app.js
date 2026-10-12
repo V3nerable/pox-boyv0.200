@@ -4292,6 +4292,12 @@
                 showNotification("OVERSEER MODE DISABLED. UI RESTRICTED.");
                 closeModals();
 
+            } else if (pendingAuthAction === 'DEV_SKIP') {
+                // v0.272: Password-protected dev skip
+                devSkipToApp();
+                showNotification("DEV MODE ACTIVATED. FAST BOOT ENABLED.");
+                closeModals();
+
             } else if (pendingAuthAction === 'REP') {
                 let amount = parseInt(document.getElementById('rep-amount').value, 10);
                 if (isNaN(amount) || amount <= 0) {
@@ -12120,12 +12126,11 @@
         }
         
         // Initialize chronicle system
-        // v0.263: Auto-start for testing (force enabled)
+        // v0.271: Require overseer password to activate dev/test mode
         const devModeEnabled = localStorage.getItem('pipboy-dev-mode') === 'true';
         console.log('[Chronicle] Dev mode status:', devModeEnabled ? 'ENABLED' : 'DISABLED');
         
-        // Force start chronicle for testing
-        if (true || devModeEnabled) {
+        if (devModeEnabled) {
             console.log('[Chronicle] Initializing chronicle system...');
             startChronicleListener();
             // v0.256: Start fluff event generation for live chronicle demo (wait for Firebase to be fully ready)
@@ -12398,7 +12403,18 @@
                             `${player.name} and ${otherPlayer.name} cross paths in the desolate landscape, exchanging wary glances.`,
                             `Two wastelanders meet: ${player.name} and ${otherPlayer.name} share a moment of recognition.`,
                             `${player.name} encounters ${otherPlayer.name} among the ruins, weapons at the ready.`,
-                            `The dust settles as ${player.name} and ${otherPlayer.name} find themselves face to face.`
+                            `The dust settles as ${player.name} and ${otherPlayer.name} find themselves face to face.`,
+                            `${player.name} spots ${otherPlayer.name} in the distance, both freezing mid-step.`,
+                            `A chance encounter: ${player.name} and ${otherPlayer.name} nod in silent acknowledgment.`,
+                            `${player.name} and ${otherPlayer.name} pass each other, hands hovering near their weapons.`,
+                            `The wasteland brings ${player.name} and ${otherPlayer.name} together, if only for a moment.`,
+                            `${player.name} hears footsteps and turns to see ${otherPlayer.name} approaching.`,
+                            `Two survivors, one path: ${player.name} and ${otherPlayer.name} must choose to fight or flee.`,
+                            `${player.name} and ${otherPlayer.name} lock eyes, the tension palpable in the irradiated air.`,
+                            `An unexpected meeting: ${player.name} and ${otherPlayer.name} size each other up.`,
+                            `${player.name} rounds a corner and nearly collides with ${otherPlayer.name}.`,
+                            `The sound of crunching gravel alerts ${player.name} to ${otherPlayer.name}'s presence.`,
+                            `${player.name} and ${otherPlayer.name} find themselves in the same stretch of wasteland, curiosity piqued.`
                         ];
                         
                         const narrative = templates[Math.floor(Math.random() * templates.length)];
@@ -12420,7 +12436,19 @@
                         const templates = [
                             `${player.name} investigates ${pinLabel}, scanning for supplies or secrets.`,
                             `The curious ${player.name} approaches ${pinLabel}, Pip-Boy at the ready.`,
-                            `${player.name} discovers ${pinLabel}, wondering who left this mark and why.`
+                            `${player.name} discovers ${pinLabel}, wondering who left this mark and why.`,
+                            `Something about ${pinLabel} draws ${player.name} closer, curiosity overcoming caution.`,
+                            `${player.name} examines ${pinLabel}, searching for clues in the wasteland.`,
+                            `The marker at ${pinLabel} catches ${player.name}'s attention, promising answers or danger.`,
+                            `${player.name} reaches ${pinLabel}, the weight of discovery heavy on their shoulders.`,
+                            `A hidden truth awaits at ${pinLabel}, and ${player.name} is determined to find it.`,
+                            `${player.name} studies ${pinLabel}, piecing together the story of those who came before.`,
+                            `The coordinates lead ${player.name} to ${pinLabel}, where secrets lie buried.`,
+                            `${player.name} approaches ${pinLabel} with caution, knowing the wasteland keeps its promises.`,
+                            `At ${pinLabel}, ${player.name} finds more questions than answers, as always.`,
+                            `${player.name} investigates the area around ${pinLabel}, senses on high alert.`,
+                            `The journey brings ${player.name} to ${pinLabel}, where the past whispers through the dust.`,
+                            `${player.name} reaches ${pinLabel}, the culmination of a long trek through the wastes.`
                         ];
                         
                         const narrative = templates[Math.floor(Math.random() * templates.length)];
@@ -12439,7 +12467,17 @@
                 `The lone ${player.name} scans the horizon, searching for signs of life.`,
                 `${player.name} consults their Pip-Boy, plotting their next move through the desolation.`,
                 `Dust swirls around ${player.name} as they navigate the post-apocalyptic landscape.`,
-                `${player.name} pauses to catch their breath, the weight of survival heavy on their shoulders.`
+                `${player.name} pauses to catch their breath, the weight of survival heavy on their shoulders.`,
+                `The wind carries ${player.name}'s scent across the barren expanse, marking their passage.`,
+                `${player.name} moves with purpose, each step taking them deeper into the unknown.`,
+                `Shadows stretch long as ${player.name} journeys through the wasteland's endless twilight.`,
+                `${player.name} checks their supplies, ensuring they have what it takes to survive another day.`,
+                `The road ahead is uncertain, but ${player.name} presses on, driven by necessity.`,
+                `${player.name} navigates by the stars, the old ways serving them well in this new world.`,
+                `Every step ${player.name} takes echoes through the silence of the wasteland.`,
+                `${player.name} adjusts their gear, preparing for whatever challenges lie ahead.`,
+                `The wasteland tests ${player.name}'s resolve with each passing mile, but they remain unbroken.`,
+                `${player.name} follows the faint trail, hoping it leads to safety or salvation.`
             ];
             
             const narrative = movementTemplates[Math.floor(Math.random() * movementTemplates.length)];
