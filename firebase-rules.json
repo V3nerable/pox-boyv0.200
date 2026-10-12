@@ -265,6 +265,23 @@
       },
       "$other": { ".validate": false }
     },
+    "officialFactions": {
+      ".read": true,
+      "$factionId": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['name'])",
+        "name": { ".validate": "newData.isString() && newData.val().length <= 100" },
+        "description": { ".validate": "newData.isString() && newData.val().length <= 1000" },
+        "blurb": { ".validate": "newData.isString() && newData.val().length <= 500" },
+        "leader": { ".validate": "newData.isString() && newData.val().length <= 100" },
+        "bio": { ".validate": "newData.isString() && newData.val().length <= 2000" },
+        "members": { ".validate": true },
+        "startingRep": { ".validate": "newData.isNumber()" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "updatedAt": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    },
     "$other": { ".read": false, ".write": false }
   }
 }
