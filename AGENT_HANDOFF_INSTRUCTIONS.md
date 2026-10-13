@@ -532,3 +532,21 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 6. Bumped the three visible `index.html` labels to v0.300 and `sw.js` cache to `pipboy-cache-v282`. `firebase-rules.json` changed as above. Added `tests/quest-regression.js` (Node.js, offline mocks) to cover key creation, visibility, acceptance, UID resolution, rejection/retry, non-deleting dismiss, ordered editing, ID generation, and explicit-only purge.
 
 **Limits / deployment:** Live Firebase and multi-device behaviour cannot be verified in the sandbox; run production tests on authorized domain. The supplied rules still use broad `.write: true` under quest paths and `.read: true`; this release does not make them secure against malicious clients. Deploy updated rules from `/home/user/pwa/firebase-rules.json` before deploying the app. Keep existing repository audio/favicons not supplied with this archive. After verifying new quest flows, an Overseer may explicitly run the irreversible purge; do not purge before confirming data removal is intended.
+
+### v0.301 - SAVE STAGE editor fix
+**Date:** 2026-10-13
+
+**Reported behavior:** Pressing SAVE STAGE left the stage editor onscreen and dimmed the view behind it; pressing CANCEL returned to the quest/stage list with the stage still present, with no console error.
+
+**Cause / fix:** Stage validation called `showNotification()` on empty title or invalid optional minutes. That notification overlay has z-index 105, *below* the open quest-creation modal (125), so the user saw a darkened background but no error message. Stage errors now appear in an inline, accessible error box inside the stage editor. A successful save validates all inputs before mutating the draft, then returns to the main quest/stages form; the stage list now has EDIT STAGE buttons so users can revisit saved or unsaved stages. Stage creation goes directly into the editor instead of opening a redundant intermediate prompt. Quest-level time-target errors also render inline rather than behind the modal. Existing Firebase rules are unchanged from v0.300.
+
+**Verification:** Node syntax and focused offline mock regression checks exercise required-title/invalid-minutes validation (no hidden notification), successful SAVE STAGE return, saved field values, and edit-button visibility. They are not a live browser/device or Firebase test. `sw.js` cache advanced to `pipboy-cache-v283`; the three version labels now show v0.301. This source/package is not a live hosting or Firebase deployment.
+
+### v0.302 - Overseer quest evidence photo viewer
+**Date:** 2026-10-13
+
+**Reported behavior:** MAIL → verification request → VIEW EVIDENCE → VIEW PHOTO closed the prompt and returned to MAIL without showing a photo. The same helper was used by ISSUED → VIEW EVIDENCE.
+
+**Cause / fix:** Every VIEW PHOTO action called `viewEvidencePhoto()` but no such function existed. `showCustomPrompt()` automatically closes before running the button action, so that undefined call left the user back in MAIL. Added a real, read-only, full-screen evidence viewer for the submitted image; it is deliberately separate from the DATABANK photo viewer and has no SEND/DELETE actions. BACK closes the photo and restores the selected stage's evidence menu (so NEXT/PREV still work); direct single-photo evidence returns to its originating screen. Image load failure is visible inside the viewer. The evidence is read from the quest progress/mail payload, not looked up in the Overseer's local photo archive. No Firebase rules or production records were changed.
+
+**Verification:** Syntax, JSON, and offline mocked regression checks passed, including evidence image `src`, viewer display/close, and return to the correct stage. Not live device/Firebase verified. `sw.js` cache is `pipboy-cache-v284`; visible labels now show v0.302. No live publish or purge was performed.

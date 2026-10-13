@@ -1,4 +1,4 @@
-// v0.300 focused offline regression checks. Run: node tests/quest-regression.js
+// v0.302 focused offline regression checks. Run: node tests/quest-regression.js
 // No Firebase connection or real user data is used.
 const fs = require('fs');
 const vm = require('vm');
@@ -67,6 +67,27 @@ async function run() {
   assert.equal(retryWrites[0].updates.status,'accepted');
   assert.equal(retryWrites[0].updates['stages/stage2/status'],'available');
   assert(!('stages/stage1/status' in retryWrites[0].updates));
+  // Overseer MAIL/ISSUED evidence opens the submitted photo in a read-only viewer.
+  const evModal={style:{display:'none'}}, evImg={style:{},src:'',removeAttribute:()=>{evImg.src=''}};
+  const evError={style:{}};const evPrompts=[];const evNotes=[];
+  const cEv=context({document:{getElementById:id=>({'evidence-viewer-modal':evModal,
+    'evidence-viewer-img':evImg,'evidence-viewer-error':evError})[id]},
+    showCustomPrompt:(text,buttons)=>evPrompts.push({text,buttons}),
+    showNotification:msg=>evNotes.push(msg),escapeHtml:s=>s});
+  vm.runInContext(section('// v0.302: Evidence belongs', '// v0.300: Reopen the final stage'),cEv);
+  assert(html.includes('id="evidence-viewer-modal"'));
+  cEv.viewMultiStageEvidence({stages:[{id:'s1',title:'First'},{id:'s2',title:'Second'}]},
+    {stages:{s1:{evidencePhoto:'data:image/jpeg;base64,first'},s2:{evidencePhoto:'data:image/jpeg;base64,second'}}});
+  evPrompts[0].buttons.find(b=>b.label==='VIEW PHOTO').action();
+  assert.equal(evModal.style.display,'flex');assert.equal(evImg.src,'data:image/jpeg;base64,first');
+  cEv.closeEvidencePhoto();
+  assert.equal(evModal.style.display,'none');assert.equal(evImg.src,'');
+  assert.equal(evPrompts.length,2);assert(evPrompts[1].text.includes('First'));
+  evPrompts[1].buttons.find(b=>b.label.includes('NEXT PHOTO')).action();
+  evPrompts[2].buttons.find(b=>b.label==='VIEW PHOTO').action();
+  assert.equal(evImg.src,'data:image/jpeg;base64,second');
+  cEv.closeEvidencePhoto();assert(evPrompts[3].text.includes('Second'));
+  assert.equal(evNotes.length,0);
   // Dismiss in verification request must only mark read; only explicit DELETE retires.
   const mailBlock=section("} else if (l.type === 'verify-request')", "} else if (l.type === 'item')");
   const dismissActions=[...mailBlock.matchAll(/label: 'DISMISS', action: \(\) => \{([\s\S]*?)\}\}/g)];
@@ -105,10 +126,46 @@ async function run() {
   assert.deepEqual(Array.from(editWrites[0].updates.stages,s=>s.status),['available','locked']);
   // Removing stage2 then adding a stage must not reuse stage3's ID.
   const c6=context({window:{pendingMultiStageQuest:{stages:[{id:'stage1'},{id:'stage3'}]}},
-    saveQuestLevelFields:()=>{},editStage:()=>{}});
-  vm.runInContext(section('function addStageOfType(type)', 'function editStage(idx)'),c6);
+    saveQuestLevelFields:()=>{},editStageDetails:()=>{}});
+  vm.runInContext(section('function addStageOfType(type)', 'function editStageDetails(idx)'),c6);
   c6.addStageOfType('photo');
   assert.equal(c6.window.pendingMultiStageQuest.stages[2].id,'stage4');
+  // Stage SAVE must return to the management form; failures must explain why
+  // inside the current modal, not open the lower-z-index notification overlay.
+  const stageFields={
+    'stage-management-section':{innerHTML:'',style:{}},
+    'stages-list':{innerHTML:''},
+    'cq-modal-title':{innerText:''},
+    'stage-edit-error':{innerText:'',style:{},scrollIntoView:()=>{}},
+    'edit-stage-title':{value:''},
+    'edit-stage-desc':{value:'Take a photo'},
+    'edit-stage-reward':{value:''},
+    'edit-stage-timelimit':{value:''}
+  };
+  let hiddenNotes=0;
+  const cStage=context({window:{pendingMultiStageQuest:{title:'Quest',description:'',stages:[{id:'stage1',type:'photo',title:''}]}},
+    document:{getElementById:id=>id==='create-quest-modal'?{querySelector:()=>({})}:stageFields[id]||null},
+    escapeHtml:s=>s,showNotification:()=>hiddenNotes++});
+  vm.runInContext(section('function showStageManagementUI()', '// v0.160: Pick bounty target'),cStage);
+  cStage.editStageDetails(0);
+  assert(stageFields['stage-management-section'].innerHTML.includes('stage-edit-error'));
+  cStage.saveStageEdit(0);
+  assert(stageFields['stage-edit-error'].innerText.includes('TITLE REQUIRED'));
+  assert.equal(hiddenNotes,0);
+  assert.equal(cStage.window.pendingMultiStageQuest.stages[0].title,'');
+  stageFields['edit-stage-title'].value='Find cache';
+  stageFields['edit-stage-timelimit'].value='abc';
+  cStage.saveStageEdit(0);
+  assert(stageFields['stage-edit-error'].innerText.includes('POSITIVE'));
+  assert.equal(cStage.window.pendingMultiStageQuest.stages[0].title,'');
+  stageFields['edit-stage-timelimit'].value='30';
+  cStage.saveStageEdit(0);
+  assert.equal(cStage.window.pendingMultiStageQuest.stages[0].title,'Find cache');
+  assert.equal(cStage.window.pendingMultiStageQuest.stages[0].timeLimit,30);
+  assert(stageFields['stage-management-section'].innerHTML.includes('CREATE QUEST'));
+  assert(stageFields['stages-list'].innerHTML.includes('Find cache'));
+  assert(stageFields['stages-list'].innerHTML.includes('EDIT STAGE'));
+  assert.equal(hiddenNotes,0);
   // Creating a direct quest preserves stage IDs and current hide-locked choice.
   const created=[],sent=[];
   const fields={'ms-quest-title':{value:'Direct test'},'ms-quest-desc':{value:'Do it'},
@@ -137,6 +194,6 @@ async function run() {
   prompts[0].buttons[0].action();assert.equal(prompts.length,2);assert.equal(purgeCalls.length,0);
   prompts[1].buttons[0].action();await new Promise(r=>setImmediate(r));
   assert.deepEqual(purgeCalls.sort(),['bounties/b','globalContracts/gc','quests/old']);
-  console.log('PASS: quest creation, direct acceptance/visibility, stage IDs/editing, UID matching, reject retry, DISMISS, advisory timers, deliberate legacy purge');
+  console.log('PASS: evidence photo viewer, stage SAVE validation/return, quest creation, direct acceptance/visibility, stage IDs/editing, UID matching, reject retry, DISMISS, advisory timers, deliberate legacy purge');
 }
 run().catch(err=>{console.error(err);process.exitCode=1});

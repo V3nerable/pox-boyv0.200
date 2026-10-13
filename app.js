@@ -2381,11 +2381,12 @@
                             <strong>STAGE ${idx + 1}: ${stage.type.toUpperCase()}</strong>
                             <button class="pip-btn" onclick="removeStage(${idx})" style="padding: 2px 8px; font-size: 0.8rem; border-color: #ff3333; color: #ff3333;">✕</button>
                         </div>
-                        <div style="font-size: 0.9rem;">${stage.title}</div>
-                        <div style="font-size: 0.8rem; opacity: 0.7;">${stage.description}</div>
-                        ${stage.reward ? `<div style="font-size: 0.8rem; color: #5fc98e;">Reward: ${stage.reward}</div>` : ''}
-                        ${stage.timeLimit ? `<div style="font-size: 0.8rem; opacity: 0.7;">Time limit: ${stage.timeLimit} min</div>` : ''}
-                        ${stage.qrCode ? `<div style="font-size: 0.8rem; color: #ffb642;">QR Code: ${stage.qrCode}</div>` : ''}
+                        <div style="font-size: 0.9rem;">${escapeHtml(stage.title || '[TITLE NEEDED]')}</div>
+                        <div style="font-size: 0.8rem; opacity: 0.7;">${escapeHtml(stage.description || '')}</div>
+                        ${stage.reward ? `<div style="font-size: 0.8rem; color: #5fc98e;">Reward: ${escapeHtml(stage.reward)}</div>` : ''}
+                        ${stage.timeLimit ? `<div style="font-size: 0.8rem; opacity: 0.7;">Advisory time target: ${stage.timeLimit} min</div>` : ''}
+                        ${stage.qrCode ? `<div style="font-size: 0.8rem; color: #ffb642;">QR Code: ${escapeHtml(stage.qrCode)}</div>` : ''}
+                        <button class="pip-btn" onclick="editStageDetails(${idx})" style="margin-top: 8px;">EDIT STAGE</button>
                     </div>
                 `;
             });
@@ -2434,19 +2435,8 @@
             
             window.pendingMultiStageQuest.stages.push(stage);
             
-            // Show stage editor
-            editStage(window.pendingMultiStageQuest.stages.length - 1);
-        }
-        
-        function editStage(idx) {
-            const stage = window.pendingMultiStageQuest.stages[idx];
-            if (!stage) return;
-            
-            // Show stage editor modal
-            showCustomPrompt('EDIT STAGE ' + (idx + 1), [
-                { label: 'EDIT DETAILS', action: () => editStageDetails(idx) },
-                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
+            // The stage editor lives inside the quest form; no second prompt layer.
+            editStageDetails(window.pendingMultiStageQuest.stages.length - 1);
         }
         
         function editStageDetails(idx) {
@@ -2486,11 +2476,12 @@
                     <input type="text" id="edit-stage-reward" class="pip-input vk-target" readonly onclick="openVk('edit-stage-reward')" placeholder="e.g. 50 XP" value="${escapeHtml(stage.reward || '')}">
                 </div>
                 <div class="form-group">
-                    <label>TIME LIMIT IN MINUTES (optional)</label>
+                    <label>ADVISORY TIME TARGET IN MINUTES (optional)</label>
                     <input type="text" id="edit-stage-timelimit" class="pip-input vk-target" readonly onclick="openVk('edit-stage-timelimit')" placeholder="e.g. 30" value="${stage.timeLimit || ''}">
                 </div>
                 ${qrField}
                 ${bountyField}
+                <div id="stage-edit-error" role="alert" aria-live="assertive" style="display:none; color:#ff6b6b; border:1px solid #ff3333; padding:10px; margin-top:12px;"></div>
                 <div style="display: flex; gap: 10px; margin-top: 15px;">
                     <button class="pip-btn" onclick="saveStageEdit(${idx})" style="flex: 1;">SAVE STAGE</button>
                     <button class="pip-btn" onclick="cancelStageEdit()" style="flex: 1; border-style: dashed;">CANCEL</button>
@@ -2499,31 +2490,33 @@
         }
         
         function saveStageEdit(idx) {
-            const stage = window.pendingMultiStageQuest.stages[idx];
-            if (!stage) return;
-            
-            const title = document.getElementById('edit-stage-title').value.trim();
-            if (!title) { showNotification('STAGE TITLE REQUIRED'); return; }
-            
+            const stage = window.pendingMultiStageQuest?.stages?.[idx];
+            if (!stage || window.editingStageIdx !== idx) return;
+            // Validation belongs in THIS modal. The global notification overlay is
+            // below create-quest-modal, so errors there looked like a darkened screen.
+            const errorEl = document.getElementById('stage-edit-error');
+            const stageError = message => {
+                if (!errorEl) return;
+                errorEl.innerText = message;
+                errorEl.style.display = 'block';
+                if (errorEl.scrollIntoView) errorEl.scrollIntoView({ block: 'nearest' });
+            };
+            const title = document.getElementById('edit-stage-title')?.value.trim() || '';
+            const description = document.getElementById('edit-stage-desc')?.value.trim() || '';
+            const reward = document.getElementById('edit-stage-reward')?.value.trim() || '';
+            const tl = document.getElementById('edit-stage-timelimit')?.value.trim() || '';
+            if (!title) { stageError('STAGE TITLE REQUIRED — ENTER A TITLE BEFORE SAVING.'); return; }
+            if (tl && (!/^\d+$/.test(tl) || +tl < 1 || !Number.isSafeInteger(+tl))) {
+                stageError('TIME TARGET MUST BE A POSITIVE NUMBER OF MINUTES, OR LEFT BLANK.'); return;
+            }
+            // Commit only after all fields pass; a failed save leaves the editor intact.
             stage.title = title;
-            stage.description = document.getElementById('edit-stage-desc').value.trim();
-            stage.reward = document.getElementById('edit-stage-reward').value.trim() || null;
-            const tl = document.getElementById('edit-stage-timelimit').value.trim();
-            if (tl && (!/^\d+$/.test(tl) || +tl < 1)) { showNotification('STAGE TIME LIMIT MUST BE POSITIVE MINUTES'); return; }
+            stage.description = description;
+            stage.reward = reward || null;
             stage.timeLimit = tl ? parseInt(tl, 10) : null;
-            
             if (stage.type === 'scan-code') {
-                const qrEl = document.getElementById('edit-stage-qr');
-                if (qrEl) stage.qrCode = qrEl.value.trim() || null;
+                stage.qrCode = document.getElementById('edit-stage-qr')?.value.trim() || null;
             }
-            
-            if (stage.type === 'bounty') {
-                const targetEl = document.getElementById('edit-stage-target');
-                const targetDisplayEl = document.getElementById('edit-stage-target-display');
-                if (targetEl) stage.targetUid = targetEl.value || null;
-                if (targetDisplayEl) stage.targetName = targetDisplayEl.value || null;
-            }
-            
             window.editingStageIdx = null;
             showStageManagementUI();
         }
@@ -2598,7 +2591,6 @@
                 const timeLimit = tlEl ? tlEl.value.trim() : '';
                 const hideLockedEl = document.getElementById('ms-hide-locked');
                 if (hideLockedEl) window.pendingMultiStageQuest.hideLockedStages = hideLockedEl.checked;
-                if (timeLimit && (!/^\d+$/.test(timeLimit) || +timeLimit < 1)) { showNotification('QUEST TIME LIMIT MUST BE POSITIVE MINUTES'); return; }
                 
                 // Show error inline in the form
                 const showError = (msg) => {
@@ -2612,6 +2604,9 @@
                         showNotification(msg);
                     }
                 };
+                if (timeLimit && (!/^\d+$/.test(timeLimit) || +timeLimit < 1 || !Number.isSafeInteger(+timeLimit))) {
+                    showError('QUEST TIME TARGET MUST BE POSITIVE MINUTES, OR LEFT BLANK.'); return;
+                }
                 
                 if (!title) {
                     showError('QUEST TITLE REQUIRED');
@@ -3468,12 +3463,45 @@
             ]);
         }
 
+        // v0.302: Evidence belongs to the other player, not this device's DATABANK.
+        // Do not reuse the archive viewer (it exposes SEND/DELETE on local photos).
+        let evidencePhotoReturn = null;
+        function viewEvidencePhoto(photo, onClose = null) {
+            const src = typeof photo === 'string' ? photo : (photo?.pip || photo?.raw || '');
+            if (!src) { showNotification('NO EVIDENCE PHOTO ATTACHED'); return; }
+            const modal = document.getElementById('evidence-viewer-modal');
+            const img = document.getElementById('evidence-viewer-img');
+            const error = document.getElementById('evidence-viewer-error');
+            if (!modal || !img) { showNotification('EVIDENCE VIEWER UNAVAILABLE'); return; }
+            evidencePhotoReturn = typeof onClose === 'function' ? onClose : null;
+            if (error) error.style.display = 'none';
+            img.style.display = 'block';
+            img.onload = () => { if (error) error.style.display = 'none'; img.style.display = 'block'; };
+            img.onerror = () => { img.style.display = 'none'; if (error) error.style.display = 'block'; };
+            modal.style.display = 'flex';
+            img.src = src;
+        }
+
+        function closeEvidencePhoto() {
+            const modal = document.getElementById('evidence-viewer-modal');
+            const img = document.getElementById('evidence-viewer-img');
+            if (modal) modal.style.display = 'none';
+            if (img) {
+                img.onload = null;
+                img.onerror = null;
+                img.removeAttribute('src');
+            }
+            const back = evidencePhotoReturn;
+            evidencePhotoReturn = null;
+            if (back) back();
+        }
+
         // v0.163: View all evidence photos from multi-stage quest
         function viewMultiStageEvidence(q, prog) {
             const stages = q.stages || [];
             const photos = [];
             stages.forEach((stage, idx) => {
-                const sp = prog.stages[stage.id] || {};
+                const sp = prog?.stages?.[stage.id] || {};
                 if (sp.evidencePhoto) {
                     photos.push({ stage: idx + 1, title: stage.title, photo: sp.evidencePhoto });
                 }
@@ -3490,7 +3518,7 @@
                 const p = photos[currentIdx];
                 const label = photos.length > 1 ? ` (${currentIdx + 1}/${photos.length})` : '';
                 showCustomPrompt(`STAGE ${p.stage}: ${escapeHtml(p.title)}${label}`, [
-                    { label: 'VIEW PHOTO', action: () => viewEvidencePhoto(p.photo) },
+                    { label: 'VIEW PHOTO', action: () => viewEvidencePhoto(p.photo, showPhoto) },
                     ...(photos.length > 1 && currentIdx < photos.length - 1 ? [{ label: 'NEXT PHOTO →', action: () => { currentIdx++; showPhoto(); }}] : []),
                     ...(photos.length > 1 && currentIdx > 0 ? [{ label: '← PREV PHOTO', action: () => { currentIdx--; showPhoto(); }}] : []),
                     { label: 'BACK', color: 'var(--pip-color-dim)', action: () => {} }
