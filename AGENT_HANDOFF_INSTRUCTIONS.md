@@ -507,3 +507,13 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 3. Advanced the three visible `index.html` labels v0.297 -> v0.298 and `sw.js` cache `pipboy-cache-v279` -> `pipboy-cache-v280`. No Firebase rules, CSS, icons, or manifest changes.
 
 **Verification:** JavaScript syntax checks and focused simulated modal flows (cold prompt, Overseer marker cancel, save/broadcast close, main-map marker cancel) passed. Device/browser interaction was not tested here.
+
+### v0.299 - Overseer Controls Cleanup
+**Date:** 2026-10-13
+
+**Changes:**
+1. Removed the `- MARKER` button (`openRemoveWaypointModal()`) from the Overseer display's map-control strip. Left `+ MARKER`, `◎ CENTER`, and the main MAP tab's `- REMOVE MARKER` control unchanged; no marker-removal logic was deleted.
+2. Moved the `⚠ FRESH SLATE` trigger from the Overseer display map-control strip to the dev-only STAT > OVERSEER panel's new EVENT RESET section. The section is appended inside `renderOverseerTab()` only when `pipboy-dev-mode === 'true'`, and is cleared/hidden when dev mode is off. `confirmFreshSlateReset()` and the underlying destructive reset flow are unchanged.
+3. Updated the three visible `index.html` version labels from v0.298 to v0.299 and `sw.js` cache from `pipboy-cache-v280` to `pipboy-cache-v281`. Firebase rules, CSS, manifest, and icons are unchanged.
+
+**Verification:** JavaScript syntax and static UI assertions passed; a focused simulated render checked that EVENT RESET appears only with dev mode on and disappears when off. Did not execute Fresh Slate (it permanently deletes Firebase data). The UI relocation can be checked on Netlify Drop, while running the Firebase-backed reset requires authorized production and should only be done intentionally.

@@ -6382,7 +6382,14 @@
                 return;
             }
             pariahEl.style.display = 'block';
-            pariahEl.innerHTML = renderPariahPanel() + renderOverseerUserManagement() + renderOverseerGlowingOnes();
+            pariahEl.innerHTML = renderPariahPanel() + renderOverseerUserManagement() + renderOverseerGlowingOnes()
+                // v0.299: Event reset belongs with dev-only STAT > OVERSEER controls,
+                // not beside the map on the public-facing Overseer display.
+                + '<div style="margin-top:20px; padding-top:15px; border-top:1px dashed #ff3333;">'
+                + '<h3 style="color:#ff3333; margin-bottom:8px;">EVENT RESET</h3>'
+                + '<p style="font-size:0.9rem; opacity:0.75; margin-bottom:10px;">PERMANENTLY RESET PLAYER PROGRESS. CONFIRMATIONS AND RESET PASSWORD REQUIRED.</p>'
+                + '<button class="pip-btn" onclick="confirmFreshSlateReset()" style="border-color:#ff3333; color:#ff3333; border-style:dashed;">[⚠ FRESH SLATE]</button>'
+                + '</div>';
             // v0.86: auto-load contracts to verify after rendering
         }
 
