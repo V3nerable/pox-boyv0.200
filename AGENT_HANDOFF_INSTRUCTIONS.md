@@ -482,3 +482,16 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 - Still saved to databank for in-app viewing
 
 **Cache version:** Bumped to v225
+
+### v0.297 - First-Close Modal Parade Fix
+**Date:** 2026-10-13
+
+**Problem:** On the first close of a custom prompt after each refresh, SNAP EVIDENCE PHOTO, the virtual keyboard, then ADD NEW MAP MARKER appeared in sequence. `showCustomPrompt()` tested `modal.style.display !== 'none'`, so overlays hidden only by the `.modal-overlay { display: none; }` stylesheet (whose inline `style.display` was `''`) were incorrectly saved as visible. `closeCustomPrompt()` then restored all of them to `display: flex`; they surfaced in descending z-index order. After a blanket close, the problem disappeared until the next page reload.
+
+**Changes:**
+1. Added `suspendVisibleModals(exceptId, owner)` using computed display, storing exact prior inline display and the `.active` class only for actually visible overlays. Added owner-scoped `restoreSuspendedModals(owner)` to prevent nested prompt/camera flows from reopening unrelated overlays.
+2. Updated custom prompts, waypoint opening, and composer quick-camera opening to use the shared suspension helper; prompt/camera close paths restore only their own suspended overlays.
+3. `closeModals()` now clears all suspension markers so a later close cannot resurrect stale overlays. Camera permission failures now close the composer camera and display an error prompt above the restored composer (rather than leaving its parent hidden).
+4. Bumped all three visible `index.html` version labels from v0.296 to v0.297 and `sw.js` cache from `pipboy-cache-v278` to `pipboy-cache-v279`. No Firebase rules, manifest, icon, or CSS changes.
+
+**Deployment note:** The supplied source bundle does not contain the audio/favicons listed in the service worker's precache array; retain those existing files in the live repository when uploading these release files. For an isolated Netlify Drop of this bundle, the absent precache entries can prevent service-worker installation even though the modal fix itself can be tested there.

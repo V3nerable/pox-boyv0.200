@@ -143,6 +143,32 @@
             modalState.openingModal = modalName;
             modalState.timestamp = Date.now();
         }
+
+        // v0.297: Only suspend overlays that are ACTUALLY visible. A stylesheet-hidden
+        // modal has modal.style.display === '' (not 'none'), which previously marked
+        // every untouched overlay as visible on the first prompt after each reload.
+        // Track the opener so nested overlays restore only their own parent(s).
+        function suspendVisibleModals(exceptId, owner) {
+            document.querySelectorAll('.modal-overlay').forEach(modal => {
+                if (modal.id === exceptId || window.getComputedStyle(modal).display === 'none') return;
+                modal.dataset.suspendedBy = owner;
+                modal.dataset.previousInlineDisplay = modal.style.display;
+                modal.dataset.previousActive = modal.classList.contains('active') ? 'true' : 'false';
+                modal.classList.remove('active'); // .active can force display:block !important
+                modal.style.display = 'none';
+            });
+        }
+
+        function restoreSuspendedModals(owner) {
+            document.querySelectorAll('.modal-overlay').forEach(modal => {
+                if (modal.dataset.suspendedBy !== owner) return;
+                modal.style.display = modal.dataset.previousInlineDisplay;
+                if (modal.dataset.previousActive === 'true') modal.classList.add('active');
+                delete modal.dataset.suspendedBy;
+                delete modal.dataset.previousInlineDisplay;
+                delete modal.dataset.previousActive;
+            });
+        }
         
         function isAnyModalOpenOrOpening() {
             // Check global state first (catches modals being opened)
@@ -2019,14 +2045,8 @@
             // v0.288: Set modal state to opening
             setModalState(true, 'custom-prompt');
             
-            // v0.240: Hide all other modals to ensure custom-prompt is on top
-            const allModals = document.querySelectorAll('.modal-overlay');
-            allModals.forEach(modal => {
-                if (modal.id !== 'custom-prompt-modal' && modal.style.display !== 'none') {
-                    modal.style.display = 'none';
-                    modal.dataset.wasVisible = 'true';
-                }
-            });
+            // v0.297: Preserve only genuinely visible overlays, not stylesheet-hidden ones.
+            suspendVisibleModals('custom-prompt-modal', 'custom-prompt');
             
             // v0.45: the shared prompt can carry an image (mail photo viewer) — reset it
             // on every open so an old photo never bleeds into an unrelated query
@@ -4949,15 +4969,9 @@
         let tempWpLat = null;
         let tempWpLng = null;
         function openAddWaypointModal(lat, lng) {
-            // v0.295: Set modal state and hide other modals
+            // v0.297: Don't flag stylesheet-hidden overlays for later restoration.
             setModalState(true, 'add-waypoint');
-            const allModals = document.querySelectorAll('.modal-overlay');
-            allModals.forEach(modal => {
-                if (modal.id !== 'add-waypoint-modal' && modal.style.display !== 'none') {
-                    modal.style.display = 'none';
-                    modal.dataset.wasVisible = 'true';
-                }
-            });
+            suspendVisibleModals('add-waypoint-modal', 'add-waypoint');
             
             document.getElementById('wp-name').value = '';
             if (lat !== undefined && lng !== undefined) {
@@ -5001,14 +5015,8 @@
             const m = document.getElementById('custom-prompt-modal');
             if (m) { m.style.display = 'none'; m.classList.remove('active'); }
             
-            // v0.240: Restore modals that were hidden when custom-prompt opened
-            const allModals = document.querySelectorAll('.modal-overlay');
-            allModals.forEach(modal => {
-                if (modal.dataset.wasVisible === 'true') {
-                    modal.style.display = 'flex';
-                    delete modal.dataset.wasVisible;
-                }
-            });
+            // v0.297: Restore only overlays this prompt actually suspended.
+            restoreSuspendedModals('custom-prompt');
             
             // v0.288: Reset modal state after a short delay
             setTimeout(() => setModalState(false, null), 50);
@@ -5020,6 +5028,10 @@
             
             // v0.139: Don't close overseer display modal when closing other modals
             document.querySelectorAll('.modal-overlay').forEach(m => { 
+                // A blanket close must not leave a suspended parent to resurrect later.
+                delete m.dataset.suspendedBy;
+                delete m.dataset.previousInlineDisplay;
+                delete m.dataset.previousActive;
                 if (m.id !== 'overseer-display-modal') {
                     m.style.display = 'none'; 
                     m.classList.remove('active');
@@ -9743,19 +9755,18 @@
         // --- v0.56: IN-COMPOSER QUICK CAPTURE -- take the shot without leaving the letter ---
         let qcStream = null;
         async function quickCamOpen() {
-            // v0.295: Set modal state and hide other modals
+            // v0.297: Suspend only overlays that are on screen.
             setModalState(true, 'quick-cam');
-            const allModals = document.querySelectorAll('.modal-overlay');
-            allModals.forEach(modal => {
-                if (modal.id !== 'quick-cam-modal' && modal.style.display !== 'none') {
-                    modal.style.display = 'none';
-                    modal.dataset.wasVisible = 'true';
-                }
-            });
+            suspendVisibleModals('quick-cam-modal', 'quick-cam');
             
             try {
                 qcStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: (typeof currentFacingMode !== 'undefined' && currentFacingMode === 'user') ? 'user' : 'environment' }, audio: false });
-            } catch (e) { showNotification('OPTICS UNAVAILABLE -- PERMISSION DENIED OR SENSOR BUSY.'); return; }
+            } catch (e) {
+                quickCamClose(); // v0.297: Undo suspension if camera permission fails.
+                // A normal notification sits behind the composer (z-index 105 vs 125).
+                showCustomPrompt('OPTICS UNAVAILABLE -- PERMISSION DENIED OR SENSOR BUSY.', []);
+                return;
+            }
             const v = document.getElementById('qc-video');
             if (v) v.srcObject = qcStream;
             document.getElementById('quick-cam-modal').style.display = 'flex';
@@ -9767,14 +9778,8 @@
             const m = document.getElementById('quick-cam-modal');
             if (m) m.style.display = 'none';
             
-            // Restore modals that were hidden when quick-cam opened
-            const allModals = document.querySelectorAll('.modal-overlay');
-            allModals.forEach(modal => {
-                if (modal.dataset.wasVisible === 'true') {
-                    modal.style.display = 'flex';
-                    delete modal.dataset.wasVisible;
-                }
-            });
+            // Restore only the overlay(s) suspended by this camera.
+            restoreSuspendedModals('quick-cam');
             
             setTimeout(() => setModalState(false, null), 50);
         }
