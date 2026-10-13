@@ -495,3 +495,15 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 4. Bumped all three visible `index.html` version labels from v0.296 to v0.297 and `sw.js` cache from `pipboy-cache-v278` to `pipboy-cache-v279`. No Firebase rules, manifest, icon, or CSS changes.
 
 **Deployment note:** The supplied source bundle does not contain the audio/favicons listed in the service worker's precache array; retain those existing files in the live repository when uploading these release files. For an isolated Netlify Drop of this bundle, the absent precache entries can prevent service-worker installation even though the modal fix itself can be tested there.
+
+### v0.298 - Overseer Marker Cancel Returns to Overseer
+**Date:** 2026-10-13
+
+**Problem:** Opening ADD NEW MAP MARKER while the Overseer display was active suspended/hid the Overseer overlay (v0.297 helper). The marker's CANCEL called `closeModals()`, which intentionally skips closing the Overseer overlay but cannot make an already hidden overlay visible again. Users landed on the main screen after cancelling.
+
+**Changes:**
+1. `suspendVisibleModals()` accepts an optional `keepVisible` ID list; `openAddWaypointModal()` passes `['overseer-display-modal']`, leaving the Overseer overlay rendered underneath the higher-z-index marker modal. Other visible modals are still suspended as before.
+2. CANCEL closes the marker and retains the Overseer display. Saving a marker and dismissing its broadcast prompt also returns to the display; marker cancellation from the main MAP tab is unchanged.
+3. Advanced the three visible `index.html` labels v0.297 -> v0.298 and `sw.js` cache `pipboy-cache-v279` -> `pipboy-cache-v280`. No Firebase rules, CSS, icons, or manifest changes.
+
+**Verification:** JavaScript syntax checks and focused simulated modal flows (cold prompt, Overseer marker cancel, save/broadcast close, main-map marker cancel) passed. Device/browser interaction was not tested here.

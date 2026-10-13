@@ -148,9 +148,9 @@
         // modal has modal.style.display === '' (not 'none'), which previously marked
         // every untouched overlay as visible on the first prompt after each reload.
         // Track the opener so nested overlays restore only their own parent(s).
-        function suspendVisibleModals(exceptId, owner) {
+        function suspendVisibleModals(exceptId, owner, keepVisible = []) {
             document.querySelectorAll('.modal-overlay').forEach(modal => {
-                if (modal.id === exceptId || window.getComputedStyle(modal).display === 'none') return;
+                if (modal.id === exceptId || keepVisible.includes(modal.id) || window.getComputedStyle(modal).display === 'none') return;
                 modal.dataset.suspendedBy = owner;
                 modal.dataset.previousInlineDisplay = modal.style.display;
                 modal.dataset.previousActive = modal.classList.contains('active') ? 'true' : 'false';
@@ -4969,9 +4969,10 @@
         let tempWpLat = null;
         let tempWpLng = null;
         function openAddWaypointModal(lat, lng) {
-            // v0.297: Don't flag stylesheet-hidden overlays for later restoration.
+            // v0.298: Keep the Overseer display beneath this higher-z-index marker
+            // modal so CANCEL/closeModals() returns there, not to the main screen.
             setModalState(true, 'add-waypoint');
-            suspendVisibleModals('add-waypoint-modal', 'add-waypoint');
+            suspendVisibleModals('add-waypoint-modal', 'add-waypoint', ['overseer-display-modal']);
             
             document.getElementById('wp-name').value = '';
             if (lat !== undefined && lng !== undefined) {
