@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.303</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.305</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -263,6 +263,7 @@
             <div class="sub-nav" id="data-sub-nav" style="flex-wrap: wrap; column-gap: 15px; row-gap: 6px;">
                 <div class="sub-nav-item active" onclick="switchSubTab('data', 'quests')">QUESTS</div>
                 <div class="sub-nav-item" onclick="switchSubTab('data', 'wastelanders')">WASTELANDERS</div>
+                <div class="sub-nav-item" onclick="switchSubTab('data', 'planner')">NUKA PLANNER</div>
             </div>
 
             <!-- APP OPTIONS moved to STAT > OPTIONS (v0.84) -->
@@ -288,6 +289,20 @@
                 <div id="quest-tab-completed" class="quest-tab-content" style="display:none;">
                     <!-- Dynamically populated by JS -->
                 </div>
+            </div>
+
+            <!-- NUKA PLANNER: 22–25 OCT 2226 (real dates 2026, Perth time) -->
+            <div id="sub-data-planner" class="sub-tab-content">
+                <div class="planner-header">
+                    <div>
+                        <h3>☢ NUKA PLANNER</h3>
+                        <p>22–25 OCTOBER 2226 · ALL TIMES AWST (UTC+8) · HALF-HOURLY</p>
+                    </div>
+                    <button class="pip-btn" id="planner-add-btn" onclick="openPlannerEditor()" style="display:none;">[+ EVENT]</button>
+                </div>
+                <div class="sub-nav planner-days" id="planner-day-nav" aria-label="Planner days"></div>
+                <div id="planner-status" role="status" style="opacity:0.7; margin:8px 0;">CONNECTING TO EVENT SCHEDULE...</div>
+                <div id="planner-grid-wrap" class="planner-grid-wrap"><div id="planner-grid" class="planner-grid"></div></div>
             </div>
 
             <!-- WASTELANDERS MET (Rolodex + link requests) -->
@@ -566,6 +581,25 @@
             </div>
             <button class="pip-btn" id="save-quest-edits-btn" onclick="saveQuestEditsFromModal()" style="margin-top: 15px;">SAVE CHANGES</button>
             <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- OVERSEER NUKA PLANNER EDITOR -->
+    <div id="planner-editor-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
+        <div class="modal-content" style="max-height:90vh; overflow-y:auto;">
+            <h3 id="planner-editor-heading">ADD EVENT</h3>
+            <p style="opacity:0.75;">FOUR-DAY SCHEDULE · AUSTRALIA/PERTH · IN-WORLD YEAR 2226</p>
+            <div class="form-group"><label>DAY</label><button class="pip-btn" id="planner-edit-day" onclick="choosePlannerDay()" style="width:100%;">SELECT DAY</button></div>
+            <div class="form-group"><label>TITLE</label><input id="planner-edit-title" class="pip-input vk-target" readonly onclick="openVk('planner-edit-title')" maxlength="100" placeholder="EVENT TITLE"></div>
+            <div class="planner-time-buttons">
+                <div class="form-group"><label>START</label><button class="pip-btn" id="planner-edit-start" onclick="choosePlannerTime('start')">SELECT START</button></div>
+                <div class="form-group"><label>END</label><button class="pip-btn" id="planner-edit-end" onclick="choosePlannerTime('end')">SELECT END</button></div>
+            </div>
+            <div class="form-group"><label>LOCATION (OPTIONAL)</label><input id="planner-edit-location" class="pip-input vk-target" readonly onclick="openVk('planner-edit-location')" maxlength="100" placeholder="MEETING POINT"></div>
+            <div class="form-group"><label>DETAILS (OPTIONAL)</label><textarea id="planner-edit-description" class="pip-input vk-target grow" readonly onclick="openVk('planner-edit-description')" maxlength="500" rows="3" placeholder="EVENT DETAILS"></textarea></div>
+            <div id="planner-editor-error" role="alert" aria-live="assertive" style="display:none; color:#ff6b6b; border:1px solid #ff3333; padding:10px; margin-bottom:10px;"></div>
+            <button class="pip-btn" id="planner-save-btn" onclick="savePlannerEvent()">SAVE EVENT</button>
+            <button class="pip-btn" onclick="closePlannerEditor()" style="border-style:dashed;">CANCEL</button>
         </div>
     </div>
 
@@ -953,7 +987,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.303</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.305</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -984,7 +1018,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.303</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.305</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>

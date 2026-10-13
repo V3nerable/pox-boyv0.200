@@ -911,3 +911,22 @@ body.chronicle-glow {
 body.chronicle-radiation {
     background: radial-gradient(circle, rgba(255, 182, 66, 0.1) 0%, transparent 70%);
 }
+
+/* v0.305 NUKA PLANNER: four fixed event days, 48 half-hour rows each. */
+.planner-header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.planner-header h3 { margin:0 0 4px; }
+.planner-header p { margin:0; font-size:0.85rem; opacity:0.7; }
+.planner-days { display:flex; flex-wrap:wrap; margin:10px 0; }
+.planner-grid-wrap { max-height:65vh; overflow:auto; border:1px solid var(--pip-color-dim); background:rgba(0,0,0,0.25); }
+.planner-grid { display:grid; min-width:100%; width:max-content; }
+.planner-slot { border-bottom:1px dashed var(--pip-color-dim); box-sizing:border-box; }
+.planner-slot:nth-child(even) { background:rgba(255,255,255,0.025); }
+.planner-slot.planner-now { background:rgba(255,182,66,0.15); }
+.planner-time { position:sticky; left:0; z-index:3; border-right:1px solid var(--pip-color-dim); border-bottom:1px dashed var(--pip-color-dim); background:var(--pip-bg); padding:6px 4px; font-size:0.95rem; box-sizing:border-box; }
+.planner-event { z-index:2; margin:2px; padding:5px 7px; box-sizing:border-box; border:1px solid var(--pip-color); background:var(--pip-bg); color:var(--pip-color); overflow:auto; cursor:pointer; box-shadow:0 0 4px var(--pip-color-dim); }
+.planner-event:hover, .planner-event:focus { outline:2px solid #ffb642; }
+.planner-event strong { display:block; line-height:1.1; overflow-wrap:anywhere; }
+.planner-event small { display:block; opacity:0.8; font-size:0.8rem; }
+.planner-time-buttons { display:flex; gap:10px; }
+.planner-time-buttons .form-group { flex:1; min-width:0; }
+.planner-time-buttons .pip-btn { width:100%; }

@@ -1346,6 +1346,7 @@
                 if (currentDataTab === 'quests') renderQuests();
                 if (currentDataTab === 'factions') renderFactions();
                 if (currentDataTab === 'wastelanders') { renderWastelanders(); renderLinkRequests(); }
+                if (currentDataTab === 'planner') { startNukaPlannerListener(); renderNukaPlanner(); }
             }
             if (tabId === 'map') {
                 // Leaflet needs to calculate size AFTER display block is applied
@@ -1390,7 +1391,7 @@
                 if (subTabId === 'factions') renderFactions();
                 if (subTabId === 'overseer') renderOverseerTab();
             } else if (parentTab === 'data') {
-                // v0.70: DATA sub-tabs are now QUESTS / CONTRACTS / WASTELANDERS (FACTIONS moved to STAT)
+                // DATA sub-tabs: QUESTS / WASTELANDERS / NUKA PLANNER (FACTIONS moved to STAT).
                 currentDataTab = subTabId;
                 // v0.110: add-quest-btn removed (legacy system), using openCreateQuestModal button instead
                 const devBtns = document.getElementById('dev-controls'); if (devBtns && subTabId !== '_mail') devBtns.style.display = (currentStatTab === 'stats' && document.getElementById('tab-stat').classList.contains('active')) ? 'flex' : 'none';
@@ -1400,6 +1401,7 @@
                 if (dataTarget) dataTarget.classList.add('active');
                 if (subTabId === 'quests') renderQuests();
                 if (subTabId === 'wastelanders') { renderWastelanders(); renderLinkRequests(); }
+                if (subTabId === 'planner') { startNukaPlannerListener(); renderNukaPlanner(); }
             } else if (parentTab === 'mail') {
                 // v0.186: MAIL sub-tabs are now MAIL / CHRONICLE (chronicle is overseer-only)
                 document.getElementById(`tab-${parentTab}`).querySelectorAll('.sub-tab-content').forEach(el => el.classList.remove('active'));
@@ -1410,6 +1412,287 @@
                 document.getElementById(`tab-${parentTab}`).querySelectorAll('.sub-tab-content').forEach(el => el.classList.remove('active'));
                 document.getElementById(`sub-${parentTab}-${subTabId}`).classList.add('active');
             }
+        }
+
+        // ================= v0.305 NUKA PLANNER =================
+        // Display year 2226; real schedule keys are 2026 dates in Australia/Perth.
+        // Never construct a Date in year 2226 for event logic.
+        const plannerDays = [
+            { key: '2026-10-22', label: 'THU 22/10/2226' },
+            { key: '2026-10-23', label: 'FRI 23/10/2226' },
+            { key: '2026-10-24', label: 'SAT 24/10/2226' },
+            { key: '2026-10-25', label: 'SUN 25/10/2226' }
+        ];
+        let plannerDay = plannerDays.find(d => d.key === plannerPerthNow().day)?.key || plannerDays[0].key;
+        let plannerEvents = {};
+        let plannerLoaded = false;
+        let plannerListenError = '';
+        let plannerListenerStarted = false;
+        let plannerDraft = null;
+        let plannerSaving = false;
+
+        function plannerIsOverseer() {
+            // Same client-side Overseer gate as the rest of the app; NOT server auth.
+            return localStorage.getItem('pipboy-dev-mode') === 'true';
+        }
+
+        function plannerPaneActive() {
+            return currentDataTab === 'planner' &&
+                !!document.getElementById('tab-data')?.classList.contains('active');
+        }
+
+        function plannerClock(minutes) {
+            if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) return '--:--';
+            return String(Math.floor(minutes / 60)).padStart(2, '0') + ':' +
+                String(minutes % 60).padStart(2, '0');
+        }
+
+        function plannerPerthNow() {
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Australia/Perth', year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+            }).formatToParts(new Date());
+            const fields = Object.fromEntries(parts.map(p => [p.type, p.value]));
+            return { day: `${fields.year}-${fields.month}-${fields.day}`,
+                minute: Number(fields.hour) * 60 + Number(fields.minute) };
+        }
+
+        function startNukaPlannerListener() {
+            if (!window.db || plannerListenerStarted) return;
+            plannerListenerStarted = true;
+            window.firebaseOnValue(window.firebaseRef(window.db, 'plannerEvents'), snapshot => {
+                plannerEvents = snapshot.val() || {};
+                plannerLoaded = true;
+                plannerListenError = '';
+                if (plannerPaneActive()) renderNukaPlanner();
+            }, error => {
+                plannerListenerStarted = false;
+                plannerListenError = 'PLANNER LINK FAILED — CHECK FIREBASE RULES / SIGNAL.';
+                console.error('[NukaPlanner] Listener failed:', error);
+                if (plannerPaneActive()) renderNukaPlanner();
+            });
+        }
+
+        function plannerEventsForDay(day) {
+            const data = plannerEvents[day] || {};
+            return Object.entries(data).filter(([, event]) => event && typeof event === 'object')
+                .map(([id, event]) => ({ ...event, id }))
+                .filter(event => typeof event.title === 'string' &&
+                    Number.isInteger(event.startMinute) && Number.isInteger(event.endMinute) &&
+                    event.startMinute >= 0 && event.startMinute < event.endMinute &&
+                    event.endMinute <= 1440 && event.startMinute % 30 === 0 && event.endMinute % 30 === 0)
+                .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute || a.id.localeCompare(b.id));
+        }
+
+        function selectPlannerDay(day) {
+            if (!plannerDays.some(d => d.key === day)) return;
+            plannerDay = day;
+            renderNukaPlanner();
+            const wrap = document.getElementById('planner-grid-wrap');
+            if (wrap) wrap.scrollTop = 0;
+        }
+
+        function renderNukaPlanner() {
+            const nav = document.getElementById('planner-day-nav');
+            const grid = document.getElementById('planner-grid');
+            const status = document.getElementById('planner-status');
+            if (!nav || !grid || !status) return;
+            nav.replaceChildren();
+            plannerDays.forEach(d => {
+                const btn = document.createElement('button');
+                btn.className = 'sub-nav-item' + (d.key === plannerDay ? ' active' : '');
+                btn.type = 'button';
+                btn.textContent = d.label;
+                btn.onclick = () => selectPlannerDay(d.key);
+                nav.appendChild(btn);
+            });
+            const add = document.getElementById('planner-add-btn');
+            if (add) add.style.display = plannerIsOverseer() ? 'inline-block' : 'none';
+            const events = plannerEventsForDay(plannerDay);
+            status.textContent = plannerListenError || (!plannerLoaded ? 'CONNECTING TO EVENT SCHEDULE...'
+                : events.length + ' EVENT' + (events.length === 1 ? '' : 'S') + ' · ' +
+                  (events.length ? 'TAP AN EVENT FOR DETAILS' : 'NO EVENTS SCHEDULED'));
+
+            // Interval partitioning: overlapping blocks get their own side-by-side
+            // lanes; sequential blocks reuse lanes. Rows remain exact half-hours.
+            const laneEnds = [];
+            const assigned = events.map(event => {
+                let lane = laneEnds.findIndex(end => end <= event.startMinute);
+                if (lane < 0) lane = laneEnds.length;
+                laneEnds[lane] = event.endMinute;
+                return { event, lane };
+            });
+            const lanes = Math.max(1, laneEnds.length);
+            grid.replaceChildren();
+            grid.style.gridTemplateColumns = `62px repeat(${lanes}, minmax(160px, 1fr))`;
+            grid.style.gridTemplateRows = 'repeat(48, 56px)';
+            const now = plannerPerthNow();
+            for (let slot = 0; slot < 48; slot++) {
+                const line = document.createElement('div');
+                line.className = 'planner-slot' + (now.day === plannerDay && Math.floor(now.minute / 30) === slot ? ' planner-now' : '');
+                line.style.gridRow = String(slot + 1);
+                line.style.gridColumn = '1 / -1';
+                grid.appendChild(line);
+                const time = document.createElement('div');
+                time.className = 'planner-time';
+                time.style.gridRow = String(slot + 1);
+                time.style.gridColumn = '1';
+                time.textContent = plannerClock(slot * 30);
+                grid.appendChild(time);
+            }
+            assigned.forEach(({ event, lane }) => {
+                const card = document.createElement('div');
+                card.className = 'planner-event';
+                card.tabIndex = 0;
+                card.setAttribute('role', 'button');
+                card.style.gridColumn = String(lane + 2);
+                card.style.gridRow = `${event.startMinute / 30 + 1} / span ${(event.endMinute - event.startMinute) / 30}`;
+                const heading = document.createElement('strong');
+                heading.textContent = event.title;
+                const time = document.createElement('small');
+                time.textContent = `${plannerClock(event.startMinute)}–${plannerClock(event.endMinute)} AWST`;
+                card.append(heading, time);
+                card.onclick = () => openPlannerEventDetails(plannerDay, event.id);
+                card.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click(); } };
+                grid.appendChild(card);
+            });
+        }
+
+        function openPlannerEventDetails(day, id) {
+            if (!plannerDays.some(d => d.key === day)) return;
+            const event = plannerEvents[day]?.[id];
+            if (!event) { showNotification('EVENT NO LONGER AVAILABLE.'); return; }
+            const date = plannerDays.find(d => d.key === day).label;
+            let text = `${event.title}\n${date} · ${plannerClock(event.startMinute)}–${plannerClock(event.endMinute)} AWST`;
+            if (event.location) text += '\nLOCATION: ' + event.location;
+            if (event.description) text += '\n\n' + event.description;
+            const buttons = [];
+            if (plannerIsOverseer()) {
+                buttons.push({ label: 'EDIT EVENT', action: () => openPlannerEditor(day, id) });
+                buttons.push({ label: 'DELETE EVENT', color: '#ff3333', action: () => confirmDeletePlannerEvent(day, id) });
+            }
+            buttons.push({ label: 'CLOSE', action: () => {} });
+            showCustomPrompt(text, buttons);
+        }
+
+        function plannerEditorError(message) {
+            const error = document.getElementById('planner-editor-error');
+            if (error) { error.textContent = message; error.style.display = 'block'; }
+        }
+
+        function updatePlannerEditorLabels() {
+            if (!plannerDraft) return;
+            document.getElementById('planner-edit-day').textContent =
+                plannerDays.find(d => d.key === plannerDraft.day)?.label || 'SELECT DAY';
+            document.getElementById('planner-edit-day').disabled = !!plannerDraft.id;
+            document.getElementById('planner-edit-start').textContent = 'START: ' + plannerClock(plannerDraft.startMinute);
+            document.getElementById('planner-edit-end').textContent = 'END: ' + plannerClock(plannerDraft.endMinute);
+        }
+
+        function openPlannerEditor(day = plannerDay, id = null) {
+            if (!plannerIsOverseer()) { showNotification('OVERSEER ACCESS REQUIRED.'); return; }
+            if (!plannerDays.some(d => d.key === day)) return;
+            const event = id ? plannerEvents[day]?.[id] : null;
+            if (id && !event) { showNotification('EVENT NO LONGER AVAILABLE.'); return; }
+            plannerDraft = { day, id, startMinute: event?.startMinute ?? 540,
+                endMinute: event?.endMinute ?? 600 };
+            document.getElementById('planner-editor-heading').textContent = id ? 'EDIT EVENT' : 'ADD EVENT';
+            document.getElementById('planner-edit-title').value = event?.title || '';
+            document.getElementById('planner-edit-location').value = event?.location || '';
+            document.getElementById('planner-edit-description').value = event?.description || '';
+            const error = document.getElementById('planner-editor-error');
+            if (error) error.style.display = 'none';
+            const save = document.getElementById('planner-save-btn');
+            if (save) save.disabled = false;
+            plannerSaving = false;
+            updatePlannerEditorLabels();
+            document.getElementById('planner-editor-modal').style.display = 'flex';
+        }
+
+        function closePlannerEditor() {
+            if (plannerSaving) return; // don't dismiss until Firebase confirms the save
+            plannerDraft = null;
+            document.getElementById('planner-editor-modal').style.display = 'none';
+        }
+
+        function choosePlannerDay() {
+            if (!plannerDraft || plannerDraft.id) return;
+            showCustomPrompt('SELECT EVENT DAY', plannerDays.map(d => ({
+                label: d.label, action: () => { plannerDraft.day = d.key; updatePlannerEditorLabels(); }
+            })));
+        }
+
+        function choosePlannerTime(which) {
+            if (!plannerDraft || !['start', 'end'].includes(which)) return;
+            const hours = Array.from({ length: 24 }, (_, hour) => ({
+                label: String(hour).padStart(2, '0') + ':00 / :30',
+                action: () => showCustomPrompt('SELECT ' + which.toUpperCase() + ' MINUTES', [
+                    { label: String(hour).padStart(2, '0') + ':00', action: () => {
+                        plannerDraft[which + 'Minute'] = hour * 60; updatePlannerEditorLabels();
+                    }},
+                    { label: String(hour).padStart(2, '0') + ':30', action: () => {
+                        plannerDraft[which + 'Minute'] = hour * 60 + 30; updatePlannerEditorLabels();
+                    }}
+                ])
+            }));
+            if (which === 'end') hours.push({ label: '24:00 — END OF DAY', action: () => {
+                plannerDraft.endMinute = 1440; updatePlannerEditorLabels();
+            }});
+            hours.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
+            showCustomPrompt('SELECT ' + which.toUpperCase() + ' HOUR (AWST)', hours);
+        }
+
+        function savePlannerEvent() {
+            if (!plannerIsOverseer() || !plannerDraft || plannerSaving) return;
+            const draft = { ...plannerDraft };
+            const title = document.getElementById('planner-edit-title').value.trim();
+            const location = document.getElementById('planner-edit-location').value.trim();
+            const description = document.getElementById('planner-edit-description').value.trim();
+            if (!window.db) { plannerEditorError('NO SATELLITE LINK — TRY AGAIN ONLINE.'); return; }
+            if (!title || title.length > 100) { plannerEditorError('TITLE REQUIRED (MAX 100 CHARACTERS).'); return; }
+            if (location.length > 100 || description.length > 500) { plannerEditorError('LOCATION OR DETAILS TOO LONG.'); return; }
+            if (!plannerDays.some(d => d.key === draft.day) ||
+                !Number.isInteger(draft.startMinute) || !Number.isInteger(draft.endMinute) ||
+                draft.startMinute < 0 || draft.startMinute >= draft.endMinute || draft.endMinute > 1440 ||
+                draft.startMinute % 30 !== 0 || draft.endMinute % 30 !== 0) {
+                plannerEditorError('SELECT VALID HALF-HOUR START AND END TIMES WITHIN THIS DAY.'); return;
+            }
+            plannerSaving = true;
+            const saveButton = document.getElementById('planner-save-btn');
+            if (saveButton) saveButton.disabled = true;
+            const fields = { title, location, description, startMinute: draft.startMinute,
+                endMinute: draft.endMinute, updatedAt: Date.now() };
+            const ref = window.firebaseRef(window.db, 'plannerEvents/' + draft.day + (draft.id ? '/' + draft.id : ''));
+            const action = draft.id
+                ? window.firebaseUpdate(ref, fields)
+                : window.firebasePush(ref, { ...fields, createdAt: Date.now(),
+                    issuerUid: myMailUid, issuerName: (userProfile.name || 'UNKNOWN').slice(0, 32) });
+            action.then(() => {
+                plannerSaving = false;
+                closePlannerEditor();
+                plannerDay = draft.day;
+                renderNukaPlanner();
+                showNotification(draft.id ? 'EVENT UPDATED.' : 'EVENT SCHEDULED.');
+            }).catch(error => {
+                plannerSaving = false;
+                if (saveButton) saveButton.disabled = false;
+                plannerEditorError('SAVE FAILED — ' + error.message);
+            });
+        }
+
+        function confirmDeletePlannerEvent(day, id) {
+            if (!plannerIsOverseer() || !plannerDays.some(d => d.key === day)) return;
+            const event = plannerEvents[day]?.[id];
+            if (!event) return;
+            showCustomPrompt('DELETE EVENT "' + event.title + '" FOR EVERYONE? THIS CANNOT BE UNDONE.', [
+                { label: 'DELETE EVENT', color: '#ff3333', action: () => {
+                    if (!plannerIsOverseer() || !window.db) return;
+                    window.firebaseRemove(window.firebaseRef(window.db, 'plannerEvents/' + day + '/' + id))
+                        .then(() => showNotification('EVENT DELETED.'))
+                        .catch(err => showNotification('DELETE FAILED: ' + err.message));
+                }},
+                { label: 'KEEP EVENT', action: () => {} }
+            ]);
         }
 
         function cycleTheme() {
@@ -6284,7 +6567,14 @@
         // ================= v0.210 INDEXEDDB PHOTO STORAGE =================
         // IndexedDB has much higher storage limits (50MB+ vs 5MB for localStorage)
         // This prevents "storage full" errors when taking many photos
-        
+        // v0.304: This store uses keyPath:'id'; a bare data-URL string cannot receive
+        // an auto-generated key (DataError). Normalize older string photo entries.
+        function photoDbEntry(entry) {
+            if (typeof entry === 'string') return { pip: entry, timestamp: Date.now() };
+            if (entry && typeof entry === 'object') return { ...entry };
+            throw new TypeError('Invalid photo archive entry');
+        }
+
         const PhotoDB = {
             db: null,
             dbName: 'PipBoyPhotos',
@@ -6332,10 +6622,35 @@
                     
                     const transaction = this.db.transaction([this.storeName], 'readwrite');
                     const store = transaction.objectStore(this.storeName);
-                    const request = store.add(photoEntry);
+                    const photo = photoDbEntry(photoEntry);
+                    delete photo.id;
+                    const request = store.add(photo);
                     
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
+                });
+            },
+
+            // Rewrite the archive atomically: a bad entry must not leave an empty
+            // database after a separate clear() succeeded (v0.304).
+            replaceAll: function(entries) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) { reject(new Error('IndexedDB not initialized')); return; }
+                    let tx;
+                    try {
+                        const normalized = entries.map(entry => {
+                            const photo = photoDbEntry(entry); // validate BEFORE clear
+                            delete photo.id; // regenerated by the store; never used by gallery
+                            return photo;
+                        });
+                        tx = this.db.transaction([this.storeName], 'readwrite');
+                        const store = tx.objectStore(this.storeName);
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error || new Error('Photo transaction failed'));
+                        tx.onabort = () => reject(tx.error || new Error('Photo transaction aborted'));
+                        store.clear();
+                        normalized.forEach(entry => store.add(entry));
+                    } catch (e) { try { tx?.abort(); } catch (_) {} reject(e); }
                 });
             },
             
@@ -6420,18 +6735,23 @@
                 console.log('[PhotoStorage] IndexedDB available:', indexedDBAvailable);
                 
                 if (indexedDBAvailable) {
-                    // Migrate existing photos from localStorage to IndexedDB
+                    // v0.304: Recover previous failed string migrations / saves.
+                    // The local fallback may contain the full archive while IndexedDB
+                    // contains only a partial copy. Merge unique images, then replace
+                    // atomically; remove fallback ONLY after the commit succeeds.
                     const localStoragePhotos = JSON.parse(localStorage.getItem('pipboy-photos') || '[]');
                     console.log('[PhotoStorage] localStorage photos:', localStoragePhotos.length);
-                    
                     if (localStoragePhotos.length > 0) {
-                        console.log('[PhotoStorage] Migrating', localStoragePhotos.length, 'photos from localStorage to IndexedDB');
-                        for (const photo of localStoragePhotos) {
-                            await PhotoDB.add(photo);
+                        const archiveNewest = [...localStoragePhotos];
+                        const seen = new Set(archiveNewest.map(entryPip));
+                        const dbNewest = (await PhotoDB.getAll()).reverse();
+                        for (const photo of dbNewest) {
+                            const image = entryPip(photo);
+                            if (image && !seen.has(image)) { archiveNewest.push(photo); seen.add(image); }
                         }
-                        // Clear localStorage after successful migration
+                        await PhotoDB.replaceAll([...archiveNewest].reverse());
                         localStorage.removeItem('pipboy-photos');
-                        console.log('[PhotoStorage] Migration complete');
+                        console.log('[PhotoStorage] Migration complete:', archiveNewest.length, 'unique archive entries');
                     }
                     
                     // Load photos from IndexedDB
@@ -6461,15 +6781,9 @@
             try {
                 if (PhotoDB.db) {
                     console.log('[PhotoStorage] Using IndexedDB');
-                    // v0.234: Save ALL photos to IndexedDB (not just the newest)
-                    // Clear existing photos first to avoid duplicates
-                    await PhotoDB.clear();
-                    console.log('[PhotoStorage] Cleared IndexedDB');
-                    
-                    // Add all photos from in-memory array
-                    for (const photo of photoArchive) {
-                        await PhotoDB.add(photo);
-                    }
+                    // v0.304: One atomic transaction; bare legacy strings are
+                    // converted to objects compatible with keyPath:'id'.
+                    await PhotoDB.replaceAll([...photoArchive].reverse());
                     console.log('[PhotoStorage] Saved', photoArchive.length, 'photos to IndexedDB');
                     
                     // v0.234: Don't reload from IndexedDB - keep in-memory array as source of truth
@@ -6479,14 +6793,17 @@
                     localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
                     console.log('[PhotoStorage] Saved', photoArchive.length, 'photos to localStorage');
                 }
+                return true;
             } catch (e) {
                 console.error('[PhotoStorage] Save failed:', e);
                 // Try localStorage as fallback
                 try {
                     localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
                     console.log('[PhotoStorage] Fallback save succeeded');
+                    return true;
                 } catch (e2) {
                     console.error('[PhotoStorage] Fallback save also failed:', e2);
+                    return false;
                 }
             }
         }
@@ -6879,6 +7196,7 @@
                 buttons.push({
                     label: '✉ ' + c.name + ' (CONTACT)',
                     action: () => {
+                        if (!isMutualLink(c.uid)) { promptPhotoLinkRequired(c.uid); return; }
                         closePhotoViewer();
                         sendPhotoMail(c, entry);
                     }
@@ -6900,10 +7218,7 @@
                 
                 buttons.push({
                     label: '✉ ' + (b.name || 'UNKNOWN') + ' (UNLINKED)',
-                    action: () => {
-                        closePhotoViewer();
-                        sendPhotoMail({ uid: uid, name: b.name || 'UNKNOWN' }, entry);
-                    }
+                    action: () => promptPhotoLinkRequired(uid)
                 });
             });
             
@@ -8201,7 +8516,10 @@
                     { label: p.item ? 'LOG + TAKE ITEM' : 'LOG TRANSMISSION', action: () => acceptMsg(key, l) },
                     { label: 'REPLY', action: () => composeTo('msg', safeUid(l.from), key) },
                 ];
-                if (p.photo) msgBtns.push({ label: 'SAVE PHOTO', action: () => saveMailPhoto(p.photo) }); // v0.56
+                if (p.photo) msgBtns.push({
+                    label: p.item ? 'SAVE PHOTO + LOG + TAKE ITEM' : 'SAVE PHOTO + LOG',
+                    action: () => saveAndLogMailPhoto(key, l)
+                });
                 msgBtns.push({ label: 'DELETE', color: '#ff3333', action: () => declineLetter(key) });
                 showCustomPrompt(body + '\n\n' + bits.join('\n'), msgBtns);
                 if (p.photo) {
@@ -8453,7 +8771,7 @@
             });
         }
 
-        function acceptMsg(key, l) {
+        function acceptMsg(key, l, successMessage = 'TRANSMISSION LOGGED.') {
             // v0.48: photos live IN MAIL now — no databank auto-save on log either
             // v0.47: attached item pods grant straight into the LOADOUT on log
             if (l.payload && l.payload.item) {
@@ -8480,7 +8798,7 @@
             flagLetter(key, 'claimed');
             markProcessed(key);
             saveComms();
-            showNotification('TRANSMISSION LOGGED.');
+            showNotification(successMessage);
             if (mailTabActive()) renderMail();
             setTimeout(() => { if (mailTabActive()) renderMail(); }, 50); // v0.61: delayed re-render to ensure UI updates
         }
@@ -8693,21 +9011,33 @@
             return true;
         }
 
+        // Photos require a link. Use a prompt above the current viewer/composer;
+        // showNotification() sits BELOW those overlays and looked like a silent tap.
+        function promptPhotoLinkRequired(uid) {
+            const c = contactByUid(uid);
+            const b = lastKnownBeaconData[uid];
+            const name = (c?.name || b?.name || 'THIS WASTELANDER').toUpperCase();
+            const pending = outbox.some(e => e.type === 'handshake' && e.to === uid &&
+                ['queued', 'sending', 'sent'].includes(e.status));
+            const message = pending
+                ? 'PHOTO TRANSMISSION BLOCKED. ' + name + ' MUST ACCEPT YOUR PENDING DATACARD LINK REQUEST FIRST. TEXT MESSAGES STILL WORK.'
+                : 'PHOTO TRANSMISSION BLOCKED. YOU NEED TO LINK WITH ' + name + ' FIRST. SEND YOUR DATACARD AND WAIT FOR THEM TO ACCEPT IT; TEXT MESSAGES STILL WORK.';
+            const buttons = pending ? [] : [{ label: 'SEND MY DATACARD', action: () => sendDatacardToUid(uid) }];
+            buttons.push({ label: 'OK', color: 'var(--pip-color-dim)', action: () => {} });
+            showCustomPrompt(message, buttons);
+        }
+
         let photoPickTarget = null;
         let photoPickMode = 'send'; // v0.47: 'send' = one-shot photo letter; 'attach' = hand the shot back to the message composer
         function openPhotoPicker(uid) {
-            // v0.143: Allow sending photos to unlinked users
             const c = contactByUid(uid);
             const b = lastKnownBeaconData[uid];
-            
             if (!c && !b) {
                 showNotification('NO CONTACT OR BEACON DATA FOR THIS USER.');
                 return;
             }
-            
-            // Only require mutual link for contacts, not for unlinked users
-            if (c && !isMutualLink(uid)) {
-                showNotification('LINK NOT CONFIRMED BOTH WAYS YET -- THEY MUST ACCEPT YOUR DATACARD.');
+            if (!isMutualLink(uid)) {
+                promptPhotoLinkRequired(uid);
                 return;
             }
             
@@ -8719,7 +9049,7 @@
             photoPickMode = 'send';
             photoPickTarget = uid;
             const name = c ? c.name : (b && b.name ? b.name : 'UNKNOWN SIGNAL');
-            document.getElementById('pp-title').innerText = 'TRANSMIT PHOTO TO: ' + name + (c ? '' : ' (UNLINKED)');
+            document.getElementById('pp-title').innerText = 'TRANSMIT PHOTO TO: ' + name;
             let html = '<div class="photo-tile-grid">';
             photoArchive.forEach((e, i) => { html += `<div class="photo-tile" onclick="pickPhotoForMail(${i})"><img src="${entryPip(e)}"></div>`; });
             document.getElementById('pp-grid').innerHTML = html + '</div>';
@@ -8896,16 +9226,24 @@
             
             if (!c && !b) {
                 // No contact and no beacon data - can't send
-                return closeModals();
+                closeModals();
+                showNotification('RECIPIENT NO LONGER AVAILABLE.');
+                return;
             }
-            
-            showCustomPrompt('TRANSMIT THIS PHOTO TO ' + name + (c ? '' : ' (UNLINKED)') + '?', [
+            if (!isMutualLink(photoPickTarget)) {
+                promptPhotoLinkRequired(photoPickTarget);
+                return;
+            }
+            showCustomPrompt('TRANSMIT THIS PHOTO TO ' + name + '?', [
                 { label: 'SEND PHOTO', action: () => { sendPhotoMail(c || { uid: photoPickTarget, name: name }, entry); } },
                 { label: 'BACK', color: 'var(--pip-color-dim)', action: () => { document.getElementById('photo-pick-modal').style.display = 'flex'; } }
             ]);
         }
 
         function sendPhotoMail(c, entry) {
+            // Recheck at transmission time: a picker can remain open while links change.
+            if (!c?.uid) { showNotification('NO PHOTO RECIPIENT SELECTED.'); return; }
+            if (!isMutualLink(c.uid)) { promptPhotoLinkRequired(c.uid); return; }
             // v0.47: transit compression extracted to compressMailPhoto() (shared with
             // composer attachments) — letter still rides the 'msg' type, ZERO rules changes
             compressMailPhoto(entry, url => {
@@ -9023,7 +9361,7 @@
             if (cmAttach.photo) { cmAttach.photo = null; refreshAttachUi(); return; }
             const t = composeTargetInfo(contactUidTarget);
             if (!t) return;
-            if (!isMutualLink(t.uid)) { showNotification('PHOTOS NEED A CONFIRMED LINK BOTH WAYS -- TEXT STILL WORKS.'); return; }
+            if (!isMutualLink(t.uid)) { promptPhotoLinkRequired(t.uid); return; }
             if (!photoArchive.length) { showNotification('DATABANK EMPTY -- TAKE A PHOTO FIRST.'); return; }
             photoPickMode = 'attach'; // the databank picker hands the shot back to the composer
             photoPickTarget = t.uid;
@@ -9083,8 +9421,9 @@
                 text = hasPhoto ? 'PHOTO ATTACHED' : 'ITEM ATTACHED';
             }
             
-            const t = composeTargetInfo(contactUidTarget); // v0.37: unlinked beacon targets allowed
+            const t = composeTargetInfo(contactUidTarget); // v0.37: unlinked beacon targets allowed for TEXT
             if (!t) return closeModals();
+            if (hasPhoto && !isMutualLink(t.uid)) { promptPhotoLinkRequired(t.uid); return; }
             const attach = { photo: cmAttach.photo || null, item: null };
             if (cmAttach.itemId !== null) {
                 const it = items.find(x => x.id === cmAttach.itemId);
@@ -9251,28 +9590,47 @@
             showCustomPrompt(kind === 'quest' ? 'ISSUE CONTRACT TO:' : 'SELECT RECIPIENT:', buttons);
         }
 
-        // v0.56: [SAVE PHOTO] on inbound transmissions -- files the shot into the CAM DATABANK
-        function saveMailPhoto(dataUrl) {
-            if (!dataUrl || typeof dataUrl !== 'string') return;
-            photoArchive.unshift(dataUrl); // string entries are first-class (entryPip handles both)
-            console.log('[PhotoStorage] saveMailPhoto: Added photo, total:', photoArchive.length);
-            
-            // v0.210: Save to IndexedDB (or localStorage fallback)
+        // v0.304: Save first; only log an incoming letter after storage succeeds.
+        // Mail-history SAVE PHOTO remains a plain save (the letter is already logged).
+        async function saveMailPhoto(dataUrl, quiet = false) {
+            if (!dataUrl || typeof dataUrl !== 'string') {
+                showNotification('NO PHOTO ATTACHED TO SAVE.'); return false;
+            }
+            // Store an object: IndexedDB's keyPath:'id' cannot auto-key a string.
+            const entry = { pip: dataUrl, timestamp: Date.now() };
+            photoArchive.unshift(entry);
+            let saved = false;
             try {
                 if (typeof savePhotoArchive === 'function') {
-                    savePhotoArchive();
+                    saved = await savePhotoArchive();
                 } else {
                     localStorage.setItem('pipboy-photos', JSON.stringify(photoArchive));
-                    console.log('[PhotoStorage] saveMailPhoto: Saved to localStorage (savePhotoArchive not available)');
+                    saved = true;
                 }
-            } catch (e) {
-                console.error('[PhotoStorage] saveMailPhoto: Save error:', e);
+            } catch (e) { console.error('[PhotoStorage] saveMailPhoto: Save error:', e); }
+            if (!saved) {
+                const idx = photoArchive.indexOf(entry);
+                if (idx !== -1) photoArchive.splice(idx, 1);
                 showNotification('DATABANK FULL -- PHOTO COULD NOT BE FILED.');
-                return;
+                return false;
             }
             const camTab = document.getElementById('tab-cam');
             if (camTab && camTab.classList.contains('active')) renderPhotoGallery();
-            showNotification('PHOTO FILED TO DATABANK.');
+            if (!quiet) showNotification('PHOTO FILED TO DATABANK.');
+            return true;
+        }
+
+        const savingMailPhotoKeys = new Set();
+        async function saveAndLogMailPhoto(key, letter) {
+            if (savingMailPhotoKeys.has(key) || mailProcessed.includes(key)) return;
+            savingMailPhotoKeys.add(key);
+            try {
+                if (await saveMailPhoto(letter?.payload?.photo, true)) {
+                    acceptMsg(key, letter, 'PHOTO FILED TO DATABANK. TRANSMISSION LOGGED.');
+                }
+            } finally {
+                savingMailPhotoKeys.delete(key);
+            }
         }
 
         function renderMail() {
@@ -9628,6 +9986,7 @@
                 startRadZoneListener(); // v0.47
                 startStarchedListener(); // v0.58: Starched Genes global toggle
                 startQuestsListener(); // v0.91: Unified quest system (replaces globalContracts + bounties)
+                startNukaPlannerListener(); // v0.305: shared Overseer event schedule
                 flushOutbox();
                 refreshOutboxStatuses();
                 renderMailBadge();
