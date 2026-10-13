@@ -135,7 +135,7 @@
         let modalState = {
             isOpen: false,
             openingModal: null,
-            timestamp: 0
+            timestamp: Date.now() // v0.293: Initialize with current time to prevent first-click issues
         };
         
         function setModalState(isOpen, modalName = null) {
@@ -148,8 +148,8 @@
             // Check global state first (catches modals being opened)
             if (modalState.isOpen) return true;
             
-            // Check if a modal was opened in the last 100ms (catches race conditions)
-            if (Date.now() - modalState.timestamp < 100) return true;
+            // v0.293: Check if a modal was opened in the last 500ms (increased from 100ms to catch first-click issues)
+            if (Date.now() - modalState.timestamp < 500) return true;
             
             // Fallback: Check for any visible modal overlays
             const modals = document.querySelectorAll('.modal-overlay');
@@ -1888,6 +1888,32 @@
             }
             // Apply setting after DOM is ready
             setTimeout(applyKeyboardSetting, 500);
+            
+            // v0.292: Use MutationObserver to watch for new inputs being added to DOM
+            const observer = new MutationObserver((mutations) => {
+                let hasNewInputs = false;
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === 1) { // Element node
+                            if (node.matches && (node.matches('input.pip-input.vk-target') || node.matches('textarea.pip-input.vk-target'))) {
+                                hasNewInputs = true;
+                            } else if (node.querySelectorAll) {
+                                const inputs = node.querySelectorAll('input.pip-input.vk-target, textarea.pip-input.vk-target');
+                                if (inputs.length > 0) hasNewInputs = true;
+                            }
+                        }
+                    });
+                });
+                if (hasNewInputs) {
+                    setTimeout(applyKeyboardSetting, 50);
+                }
+            });
+            
+            // Start observing the document body for changes
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
         })();
 
         // --- v0.56: HEADER HUD GLYPHS (state icons instead of toast chatter) ---
@@ -2065,6 +2091,9 @@
             
             // v0.288: Confirm modal state is open
             setModalState(true, 'custom-prompt');
+            
+            // v0.292: Apply keyboard setting to any new inputs in the modal
+            setTimeout(applyKeyboardSetting, 100);
             
             // v0.94: triple-tap scroll reset — immediate, after paint, and after paint-of-paint
             cpModal.scrollTop = 0;
