@@ -1,10 +1,10 @@
-# Pox-Boy 3026 v0.302 — deployment guide
+# Pox-Boy 3026 v0.303 — deployment guide
 
 The app needs HTTPS for the mobile camera. This package is a static PWA; it is not a live Firebase deployment.
 
 ## Release order
 1. Back up the production Firebase Realtime Database and current Firebase rules. Publish `firebase-rules.json` to the **correct project's Realtime Database Rules** using your normal Firebase workflow. This release adds `quest-rejected` mail and prevents new legacy quest, global-contract and bounty writes; do **not** replace rules for a different Firebase project. Authentication/security redesign is not included.
-2. Upload the contents of this `pwa` folder to the existing HTTPS site (for example, GitHub Pages or Netlify). Keep any existing site assets not included here, such as audio and favicons. Deploy the contents at the site's web root, not necessarily the enclosing `pwa` directory. The service-worker cache name changed; reload installed devices and confirm they show v0.302.
+2. Upload the contents of this `pwa` folder to the existing HTTPS site (for example, GitHub Pages or Netlify). Keep any existing site assets not included here, such as audio and favicons. Deploy the contents at the site's web root, not necessarily the enclosing `pwa` directory. The service-worker cache name changed; reload installed devices and confirm they show v0.303.
 3. With authorized test devices, create and accept a multi-stage quest, submit stage evidence, verify or reject from ISSUED and MAIL, confirm rejection reopens only the final stage, and test MAIL DISMISS. Time limits should warn, not block submission. The included `tests/quest-regression.js` runs offline mock/static tests (`node tests/quest-regression.js`); it is **not** a substitute for production Firebase/multi-device checks.
 4. **Optional irreversible cleanup:** After backup and acceptance tests, an authorized Overseer can open STAT → OVERSEER → QUEST DATA CLEANUP and follow two confirmations to delete all old single-step Firebase quest records plus retired global contracts and bounties. It does not delete modern multi-stage quests. This cleanup was not run during preparation; no production data has been removed. Updated devices automatically remove their old local quest records and retire old-format quest mail/outbox entries.
 

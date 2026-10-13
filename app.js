@@ -101,7 +101,6 @@
         // v0.300: Legacy local quests retired and removed on every updated device.
         localStorage.removeItem('pipboy-quests');
         const storedUser = localStorage.getItem('pipboy-user');
-        const storedFactions = localStorage.getItem('pipboy-factions');
 
         let userProfile = storedUser ? JSON.parse(storedUser) : {
             isInitiated: false,
@@ -197,9 +196,25 @@
             return officialFactions.map(f => ({ ...f, isOfficial: true }));
         }
         
-        // Get user's reputation for a faction
+        // Starting reputation is derived once on first access from the official
+        // faction record and the completed registration. The Firebase listener may
+        // arrive AFTER onboarding, so never depend on it in finishOnboarding().
+        // Explicit local values (including zero) always win; Overseer changes store
+        // the resulting absolute number via setFactionRep(), without reapplying bonuses.
         function getFactionRep(factionId) {
-            return factionReps[factionId] || 0;
+            if (Object.prototype.hasOwnProperty.call(factionReps, factionId)) return factionReps[factionId];
+            const faction = officialFactions.find(f => f.id === factionId);
+            if (!faction) return 0;
+            const base = Number(faction.startingRep);
+            let rep = Number.isFinite(base) ? base : 0;
+            const originFaction = {
+                vault: 'VAULT-TEC SURVIVORS',
+                warboy: 'THE WAR BOYS',
+                scavenger: 'SCAVENGERS GUILD'
+            }[userProfile.origin?.id];
+            if (originFaction && String(faction.name).toUpperCase() === originFaction) rep += 20;
+            if (userProfile.perk?.id === 'ayatollah') rep += 20;
+            return rep;
         }
         
         // Set user's reputation for a faction
@@ -403,7 +418,8 @@
             localStorage.setItem('pipboy-items', JSON.stringify(items));
             localStorage.setItem('pipboy-user', JSON.stringify(userProfile));
             localStorage.setItem('pipboy-waypoints', JSON.stringify(waypoints));
-            localStorage.setItem('pipboy-factions', JSON.stringify(factions));
+            // Faction definitions are now synced from Firebase; local reputation is
+            // persisted separately by setFactionRep(). No legacy `factions` variable.
         }
 
         // ==================== FUN / WILD STATS (v0.57) ====================
@@ -1103,27 +1119,10 @@
             userProfile.perk = perkData;
             userProfile.isInitiated = true;
 
-            // v0.59: ORIGIN bonuses — stat modifiers applied in calculateSkills, faction rep here, no items (INV retired)
-            if (obOriginId === 'vault') {
-                const f = factions.find(fac => fac.name === "VAULT-TEC SURVIVORS");
-                if (f) f.rep += 20;
-            } else if (obOriginId === 'warboy') {
-                const f1 = factions.find(fac => fac.name === "THE WAR BOYS");
-                if (f1) f1.rep += 20;
-            } else if (obOriginId === 'scavenger') {
-                const f = factions.find(fac => fac.name === "SCAVENGERS GUILD");
-                if (f) f.rep += 20;
-            }
-
-            // v0.59: TRAIT bonuses — Guzzoline Addict: HP reduced to 80 + half-rad mechanic (no items)
-            if (obTraitId === 'guzzoline') {
-                userProfile.maxHp = 80;
-            }
-
-            // v0.59: PERK bonuses — Wasteland Legend: +20 rep to ALL factions (no items)
-            if (perkData.id === 'ayatollah') {
-                factions.forEach(f => f.rep += 20);
-            }
+            // Origin and Wasteland Legend reputation bonuses are supplied by
+            // getFactionRep() once official factions arrive; onboarding works offline
+            // and never touches the retired local `factions` array.
+            if (obTraitId === 'guzzoline') userProfile.maxHp = 80;
 
             calculateSkills();
 
