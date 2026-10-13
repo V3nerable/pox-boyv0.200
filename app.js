@@ -4949,6 +4949,16 @@
         let tempWpLat = null;
         let tempWpLng = null;
         function openAddWaypointModal(lat, lng) {
+            // v0.295: Set modal state and hide other modals
+            setModalState(true, 'add-waypoint');
+            const allModals = document.querySelectorAll('.modal-overlay');
+            allModals.forEach(modal => {
+                if (modal.id !== 'add-waypoint-modal' && modal.style.display !== 'none') {
+                    modal.style.display = 'none';
+                    modal.dataset.wasVisible = 'true';
+                }
+            });
+            
             document.getElementById('wp-name').value = '';
             if (lat !== undefined && lng !== undefined) {
                 tempWpLat = lat; tempWpLng = lng;
@@ -5395,8 +5405,18 @@
             
             // Listen for long-press / right-click
             pipMap.on('contextmenu', function(e) {
-                // v0.288: Don't open waypoint modal if any modal is already open or opening
+                // v0.294: Don't open waypoint modal if any modal is already open or opening
                 if (isAnyModalOpenOrOpening()) return;
+                
+                // v0.294: Check if click originated from within a modal (prevent event propagation issues)
+                const originalEvent = e.originalEvent || e;
+                if (originalEvent && originalEvent.target) {
+                    const target = originalEvent.target;
+                    if (target.closest && target.closest('.modal-overlay')) {
+                        return; // Click was inside a modal, don't open waypoint modal
+                    }
+                }
+                
                 openAddWaypointModal(e.latlng.lat, e.latlng.lng);
             });
             
@@ -5406,8 +5426,13 @@
             let longPressTimer = null;
             
             pipMap.getContainer().addEventListener('touchstart', function(e) {
-                // v0.288: Don't trigger long-press if any modal is already open or opening
+                // v0.294: Don't trigger long-press if any modal is already open or opening
                 if (isAnyModalOpenOrOpening()) return;
+                
+                // v0.294: Check if touch originated from within a modal (prevent event propagation issues)
+                if (e.target && e.target.closest && e.target.closest('.modal-overlay')) {
+                    return; // Touch was inside a modal, don't trigger long-press
+                }
                 
                 if (e.touches.length === 1) {
                     touchStartTime = Date.now();
@@ -9718,17 +9743,40 @@
         // --- v0.56: IN-COMPOSER QUICK CAPTURE -- take the shot without leaving the letter ---
         let qcStream = null;
         async function quickCamOpen() {
+            // v0.295: Set modal state and hide other modals
+            setModalState(true, 'quick-cam');
+            const allModals = document.querySelectorAll('.modal-overlay');
+            allModals.forEach(modal => {
+                if (modal.id !== 'quick-cam-modal' && modal.style.display !== 'none') {
+                    modal.style.display = 'none';
+                    modal.dataset.wasVisible = 'true';
+                }
+            });
+            
             try {
                 qcStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: (typeof currentFacingMode !== 'undefined' && currentFacingMode === 'user') ? 'user' : 'environment' }, audio: false });
             } catch (e) { showNotification('OPTICS UNAVAILABLE -- PERMISSION DENIED OR SENSOR BUSY.'); return; }
             const v = document.getElementById('qc-video');
             if (v) v.srcObject = qcStream;
-            document.getElementById('quickcam-modal').style.display = 'flex';
+            document.getElementById('quick-cam-modal').style.display = 'flex';
         }
         function quickCamClose() {
+            // v0.295: Reset modal state and restore other modals
+            setModalState(false, 'closing-quick-cam');
             if (qcStream) { qcStream.getTracks().forEach(t => t.stop()); qcStream = null; }
-            const m = document.getElementById('quickcam-modal');
+            const m = document.getElementById('quick-cam-modal');
             if (m) m.style.display = 'none';
+            
+            // Restore modals that were hidden when quick-cam opened
+            const allModals = document.querySelectorAll('.modal-overlay');
+            allModals.forEach(modal => {
+                if (modal.dataset.wasVisible === 'true') {
+                    modal.style.display = 'flex';
+                    delete modal.dataset.wasVisible;
+                }
+            });
+            
+            setTimeout(() => setModalState(false, null), 50);
         }
         function quickCamSnap() {
             const v = document.getElementById('qc-video');
