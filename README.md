@@ -1,16 +1,11 @@
-# Deployment Guide
+# Pox-Boy 3026 v0.300 — deployment guide
 
-To make the camera work on mobile devices, this app must be hosted on a secure `https://` server.
+The app needs HTTPS for the mobile camera. This package is a static PWA; it is not a live Firebase deployment.
 
-## Method 1: GitHub Pages (Free & Easy)
-1. Create a free account on [GitHub](https://github.com/).
-2. Create a new repository (e.g., `pox-eclipse-app`).
-3. Upload all the files from this `pwa` folder into the repository.
-4. Go to the repository **Settings** -> **Pages**.
-5. Under "Build and deployment", set the source to deploy from a branch, and select `main`.
-6. Save. Within 1 minute, GitHub will give you a free `https://` link!
+## Release order
+1. Back up the production Firebase Realtime Database and current Firebase rules. Publish `firebase-rules.json` to the **correct project's Realtime Database Rules** using your normal Firebase workflow. This release adds `quest-rejected` mail and prevents new legacy quest, global-contract and bounty writes; do **not** replace rules for a different Firebase project. Authentication/security redesign is not included.
+2. Upload the contents of this `pwa` folder to the existing HTTPS site (for example, GitHub Pages or Netlify). Keep any existing site assets not included here, such as audio and favicons. Deploy the contents at the site's web root, not necessarily the enclosing `pwa` directory. The service-worker cache name changed; reload installed devices and confirm they show v0.300.
+3. With authorized test devices, create and accept a multi-stage quest, submit stage evidence, verify or reject from ISSUED and MAIL, confirm rejection reopens only the final stage, and test MAIL DISMISS. Time limits should warn, not block submission. The included `tests/quest-regression.js` runs offline mock/static tests (`node tests/quest-regression.js`); it is **not** a substitute for production Firebase/multi-device checks.
+4. **Optional irreversible cleanup:** After backup and acceptance tests, an authorized Overseer can open STAT → OVERSEER → QUEST DATA CLEANUP and follow two confirmations to delete all old single-step Firebase quest records plus retired global contracts and bounties. It does not delete modern multi-stage quests. This cleanup was not run during preparation; no production data has been removed. Updated devices automatically remove their old local quest records and retire old-format quest mail/outbox entries.
 
-## Method 2: Netlify (Free & Easy)
-1. Go to [Netlify Drop](https://app.netlify.com/drop).
-2. Drag and drop this entire `pwa` folder into the browser window.
-3. Netlify will instantly create a live `https://` website for you!
+**Known limit:** The supplied quest rules still allow broad public reads and permissive quest writes; UI filtering of a direct quest is not server-side confidentiality. A Firebase authentication/authorization redesign was explicitly deferred. See `AGENT_HANDOFF_INSTRUCTIONS.md` for detailed release notes.

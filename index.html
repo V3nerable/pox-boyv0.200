@@ -57,7 +57,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.299</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.300</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -275,7 +275,6 @@
                     <div class="sub-nav-item" onclick="switchQuestTab('completed')">COMPLETED</div>
                     <div class="sub-nav-item" onclick="switchQuestTab('available')">AVAILABLE</div>
                     <div class="sub-nav-item" onclick="switchQuestTab('issued')">ISSUED</div>
-                    <div class="sub-nav-item" onclick="switchQuestTab('verified')">VERIFIED</div>
                 </div>
                 <div id="quest-tab-active" class="quest-tab-content active">
                     <!-- Dynamically populated by JS -->
@@ -287,9 +286,6 @@
                     <!-- Dynamically populated by JS -->
                 </div>
                 <div id="quest-tab-completed" class="quest-tab-content" style="display:none;">
-                    <!-- Dynamically populated by JS -->
-                </div>
-                <div id="quest-tab-verified" class="quest-tab-content" style="display:none;">
                     <!-- Dynamically populated by JS -->
                 </div>
             </div>
@@ -540,43 +536,10 @@
         </div>
     </div>
 
-    <!-- COMPOSE QUEST MODAL -->
-    <div id="compose-quest-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
-        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
-            <h3 id="cq-title">TRANSMIT QUEST</h3>
-            <div class="form-group"><label>QUEST TITLE</label><input type="text" id="cq-name" class="pip-input vk-target" readonly onclick="openVk('cq-name')" placeholder="e.g. Recover the Water Chip"></div>
-            <div class="form-group"><label>BRIEF (OPTIONAL)</label><input type="text" id="cq-brief" class="pip-input vk-target" readonly onclick="openVk('cq-brief')" placeholder="One-line briefing..."></div>
-            <div class="form-group"><label>OBJECTIVES (3 MAX)</label>
-                <input type="text" id="cq-obj1" class="pip-input vk-target" readonly onclick="openVk('cq-obj1')" placeholder="Objective 1" style="margin-bottom: 5px;">
-                <input type="text" id="cq-obj2" class="pip-input vk-target" readonly onclick="openVk('cq-obj2')" placeholder="Objective 2 (optional)" style="margin-bottom: 5px;">
-                <input type="text" id="cq-obj3" class="pip-input vk-target" readonly onclick="openVk('cq-obj3')" placeholder="Objective 3 (optional)">
-            </div>
-            <div class="form-group"><label>REWARD (OPTIONAL)</label><input type="text" id="cq-reward" class="pip-input vk-target" readonly onclick="openVk('cq-reward')" placeholder="e.g. 2 Drink Tickets"></div>
-            <div class="form-group"><label>LOCATION</label><input type="text" id="cq-loc" class="pip-input vk-target" readonly onclick="openVk('cq-loc')" placeholder="e.g. Old radio tower"></div>
-            <div class="form-group"><label>EXPIRATION TIME (Optional)</label><input type="text" id="cq-time" class="pip-input vk-target" readonly onclick="openVk('cq-time')" placeholder="e.g. 18:00 (24h format)"></div>
-            <button class="pip-btn" onclick="transmitQuest()">[ TRANSMIT QUEST ]</button>
-            <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
-        </div>
-    </div>
-
     <!-- UNIFIED QUEST CREATION MODAL (v0.225) -->
     <div id="create-quest-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
             <h3 id="cq-modal-title">CREATE QUEST</h3>
-            <div class="form-group"><label>TITLE</label><input type="text" id="new-quest-title" class="pip-input vk-target" readonly onclick="openVk('new-quest-title')" maxlength="100" placeholder="Quest title..."></div>
-            <div class="form-group"><label>DESCRIPTION</label><textarea id="new-quest-desc" class="pip-input vk-target" readonly onclick="openVk('new-quest-desc')" maxlength="500" rows="3" placeholder="Quest details..."></textarea></div>
-            <div class="form-group"><label>REWARD (optional)</label><input type="text" id="new-quest-reward" class="pip-input vk-target" readonly onclick="openVk('new-quest-reward')" maxlength="100" placeholder="e.g., 50 caps, a drink..."></div>
-            <div class="form-group" id="quest-recipient-group" style="display:none;">
-                <label>RECIPIENT</label>
-                <input type="text" id="new-quest-recipient-display" class="pip-input" readonly onclick="openQuestRecipientPicker()" placeholder="Select mutual contact...">
-                <input type="hidden" id="new-quest-recipient" value="">
-            </div>
-            <div class="form-group" id="quest-target-group" style="display:none;">
-                <label>TARGET</label>
-                <input type="text" id="new-quest-target-display" class="pip-input" readonly onclick="openQuestTargetPicker()" placeholder="Select target...">
-                <input type="hidden" id="new-quest-target" value="">
-            </div>
-            <button class="pip-btn" id="submit-quest-btn" onclick="submitQuestFromModal()">CREATE QUEST</button>
             <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
         </div>
     </div>
@@ -602,45 +565,6 @@
                 <div id="edit-quest-stages-list"></div>
             </div>
             <button class="pip-btn" id="save-quest-edits-btn" onclick="saveQuestEditsFromModal()" style="margin-top: 15px;">SAVE CHANGES</button>
-            <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
-        </div>
-    </div>
-
-    <!-- COMPOSE BOUNTY MODAL (v0.84) -->
-    <div id="compose-bounty-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
-        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
-            <h3>POST BOUNTY</h3>
-            <div class="form-group"><label>SELECT TARGET</label>
-                <div id="bounty-target-list" style="max-height: 200px; overflow-y: auto; border: 1px dashed var(--pip-color-dim); padding: 8px;">
-                    <!-- Populated by JS -->
-                </div>
-                <div id="bounty-target-display" style="margin-top: 8px; font-size: 0.9rem; opacity: 0.8;">No target selected</div>
-            </div>
-            <div class="form-group"><label>REASON</label><textarea id="bounty-reason" class="pip-input vk-target grow" readonly onclick="openVk('bounty-reason')" rows="2" placeholder="Reason for bounty..."></textarea></div>
-            <div class="form-group"><label>REWARD (OPTIONAL)</label><input type="text" id="bounty-reward" class="pip-input vk-target" readonly onclick="openVk('bounty-reward')" placeholder="e.g. 100 caps"></div>
-            <div class="form-group"><label>EXPIRES IN (HOURS, OPTIONAL)</label><input type="text" id="bounty-expires" class="pip-input vk-target" readonly onclick="openVk('bounty-expires')" placeholder="e.g. 48 (leave blank for no expiry)"></div>
-            <button class="pip-btn" onclick="submitBountyForm()">[ POST BOUNTY ]</button>
-            <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
-        </div>
-    </div>
-
-    <!-- COMPOSE GLOBAL CONTRACT MODAL (v0.84) -->
-    <div id="compose-global-contract-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
-        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
-            <h3>CREATE GLOBAL CONTRACT</h3>
-            <div class="form-group"><label>CONTRACT TITLE</label><input type="text" id="gc-title" class="pip-input vk-target" readonly onclick="openVk('gc-title')" placeholder="e.g. Retrieve the artifact"></div>
-            <div class="form-group"><label>DESCRIPTION</label><textarea id="gc-desc" class="pip-input vk-target grow" readonly onclick="openVk('gc-desc')" rows="2" placeholder="Contract details..."></textarea></div>
-            <div class="form-group"><label>CONTRACT TYPE</label>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="pip-btn gc-type-btn" onclick="selectGlobalContractType('first')" style="flex: 1; min-width: 120px;">FIRST TO COMPLETE</button>
-                    <button class="pip-btn gc-type-btn" onclick="selectGlobalContractType('many')" style="flex: 1; min-width: 120px;">MANY CAN COMPLETE</button>
-                    <button class="pip-btn gc-type-btn" onclick="selectGlobalContractType('timed')" style="flex: 1; min-width: 120px;">TIMED</button>
-                </div>
-                <div id="gc-type-display" style="margin-top: 8px; font-size: 0.9rem; opacity: 0.8;">Selected: FIRST TO COMPLETE</div>
-            </div>
-            <div class="form-group"><label>REWARD (OPTIONAL)</label><input type="text" id="gc-reward" class="pip-input vk-target" readonly onclick="openVk('gc-reward')" placeholder="e.g. 50 caps"></div>
-            <div class="form-group"><label>EXPIRES IN (HOURS, OPTIONAL)</label><input type="text" id="gc-expires" class="pip-input vk-target" readonly onclick="openVk('gc-expires')" placeholder="e.g. 24 (leave blank for no expiry)"></div>
-            <button class="pip-btn" onclick="submitGlobalContractForm()">[ CREATE CONTRACT ]</button>
             <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
         </div>
     </div>
@@ -864,27 +788,6 @@
         </div>
     </div>
 
-    <!-- ADD QUEST MODAL -->
-    <div id="add-quest-modal" class="modal-overlay" style="position: fixed;">
-        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
-            <h3>ADD NEW QUEST</h3>
-            <div class="form-group"><label>QUEST TITLE</label><input type="text" id="q-name" class="pip-input vk-target" readonly onclick="openVk('q-name')" placeholder="e.g. Find the VIP Lounge"></div>
-            <!-- v0.55: both are themed prompt pickers now; the fields display the choice -->
-            <div class="form-group"><label>TYPE</label>
-                <input type="text" id="q-type" class="pip-input" readonly onclick="pickQuestType()" style="cursor: pointer;" value="MAIN QUEST">
-            </div>
-            <div class="form-group"><label>GIVEN BY</label>
-                <input type="text" id="q-giver" class="pip-input" readonly onclick="pickQuestGiver()" style="cursor: pointer;" value="UNKNOWN WASTELANDER">
-            </div>
-            <div class="form-group"><label>LOCATION</label><input type="text" id="q-loc" class="pip-input vk-target" readonly onclick="openVk('q-loc')" placeholder="e.g. Floor 2"></div>
-            <div class="form-group"><label>EXPIRATION TIME (Optional)</label><input type="text" id="q-time" class="pip-input vk-target" readonly onclick="openVk('q-time')" placeholder="e.g. 18:00 (24h format)"></div>
-            <div class="form-group"><label>OBJECTIVES (Comma separated)</label><input type="text" id="q-obj" class="pip-input vk-target" readonly onclick="openVk('q-obj')" placeholder="e.g. Enter venue, Get wristband"></div>
-            
-            <button class="pip-btn" onclick="saveNewQuest()">SAVE QUEST</button>
-            <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
-        </div>
-    </div>
-
     <!-- CUSTOM CONFIRM/PROMPT MODAL -->
     <div id="custom-prompt-modal" class="modal-overlay" style="z-index: 2002; position: fixed;">
         <div class="modal-content pulse-alert" style="border: 2px dashed var(--pip-color); text-align: center;">
@@ -899,30 +802,6 @@
         </div>
     </div>
 
-    <!-- QUEST ACTION MODAL -->
-    <div id="quest-action-modal" class="modal-overlay" style="z-index: 55; position: fixed;">
-        <div class="modal-content">
-            <h3 id="qa-title" style="border-bottom: 2px solid var(--pip-color); padding-bottom: 5px; margin-bottom: 15px;">QUEST NAME</h3>
-            
-            <div style="font-size: 1rem; opacity: 0.8; margin-bottom: 15px;">
-                <div id="qa-giver" style="margin-bottom: 5px;"></div>
-                <div id="qa-loc" style="margin-bottom: 5px;"></div>
-                <div id="qa-time" style="margin-bottom: 5px;"></div>
-            </div>
-
-            <h4 style="margin-bottom: 5px; opacity: 0.9;">OBJECTIVES:</h4>
-            <div id="qa-obj" style="margin-bottom: 25px; padding-left: 10px; border-left: 2px solid var(--pip-color-dim);"></div>
-
-            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <button class="pip-btn" id="qa-toggle-btn" onclick="executeQuestToggle()">MARK AS COMPLETE</button>
-                <button class="pip-btn" onclick="generateQuestQR()" style="border-color: #42b6ff; color: #42b6ff;">SHARE (QR)</button>
-            </div>
-            
-            <button class="pip-btn" id="qa-abandon-btn" onclick="executeQuestAbandon()" style="border-color: #ffb642; color: #ffb642;">ABANDON QUEST</button>
-            
-            <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CLOSE LOG</button>
-        </div>
-    </div>
     <div id="add-waypoint-modal" class="modal-overlay" style="z-index: 2001;">
         <div class="modal-content">
             <h3>ADD NEW MAP MARKER</h3>
@@ -1064,7 +943,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.299</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.300</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1095,7 +974,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.299</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.300</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>

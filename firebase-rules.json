@@ -28,7 +28,7 @@
         "$mailKey": {
           ".write": true,
           ".validate": "newData.hasChildren(['type', 'from', 'fromName', 'ts', 'payload'])",
-          "type":      { ".validate": "newData.isString() && (newData.val() == 'msg' || newData.val() == 'quest' || newData.val() == 'item' || newData.val() == 'handshake' || newData.val() == 'quest-offer' || newData.val() == 'verify-request')" },
+          "type":      { ".validate": "newData.isString() && (newData.val() == 'msg' || newData.val() == 'item' || newData.val() == 'handshake' || newData.val() == 'quest-offer' || newData.val() == 'verify-request' || newData.val() == 'quest-rejected')" },
           "from":      { ".validate": "newData.isString() && newData.val().length <= 64" },
           "fromName":  { ".validate": "newData.isString() && newData.val().length <= 32" },
           "ts":        { ".validate": "newData.isNumber() && newData.val() > 1735689600000" },
@@ -112,7 +112,7 @@
     "globalContracts": {
       ".read": true,
       "$contractId": {
-        ".write": true,
+        ".write": "!newData.exists()",
         ".validate": "newData.hasChildren(['title', 'issuerUid', 'issuerName', 'type', 'status', 'createdAt'])",
         "title":           { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "description":     { ".validate": "newData.isString() && newData.val().length <= 500" },
@@ -137,7 +137,7 @@
         "title":         { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
         "description":   { ".validate": "newData.isString() && newData.val().length <= 500" },
         "reward":        { ".validate": "newData.isString() && newData.val().length <= 100" },
-        "type":          { ".validate": "newData.isString() && (newData.val() == 'direct' || newData.val() == 'global' || newData.val() == 'bounty' || newData.val() == 'multi-stage')" },
+        "type":          { ".validate": "newData.isString() && (newData.val() == 'multi-stage')" },
         "issuerUid":     { ".validate": "newData.isString() && newData.val().length <= 64" },
         "issuerName":    { ".validate": "newData.isString() && newData.val().length <= 32" },
         "status":        { ".validate": "newData.isString() && (newData.val() == 'open' || newData.val() == 'cancelled' || newData.val() == 'removed' || newData.val() == 'expired')" },
@@ -207,7 +207,7 @@
     "bounties": {
       ".read": true,
       "$bountyId": {
-        ".write": true,
+        ".write": "!newData.exists()",
         ".validate": "newData.hasChildren(['targetUid', 'targetName', 'issuerUid', 'issuerName', 'status', 'createdAt'])",
         "targetUid":     { ".validate": "newData.isString() && newData.val().length <= 64" },
         "targetName":    { ".validate": "newData.isString() && newData.val().length <= 32" },

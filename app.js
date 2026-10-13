@@ -98,11 +98,8 @@
 
         // 1. Initialize state variables FIRST
         const storedItems = localStorage.getItem('pipboy-items');
-        const storedQuests = localStorage.getItem('pipboy-quests');
-        // v0.142: Clear all legacy quests - no user should load with pre-added quests
-        if (storedQuests) {
-            localStorage.removeItem('pipboy-quests');
-        }
+        // v0.300: Legacy local quests retired and removed on every updated device.
+        localStorage.removeItem('pipboy-quests');
         const storedUser = localStorage.getItem('pipboy-user');
         const storedFactions = localStorage.getItem('pipboy-factions');
 
@@ -129,7 +126,7 @@
             { id: 4, name: "DRINK TICKET", type: "aid", effects: "Restores Thirst", quantity: 2, equipped: false }
         ];
         
-        let quests = storedQuests ? JSON.parse(storedQuests) : [];
+        let quests = []; // Legacy code is inert; no local quest data is loaded.
 
         // v0.288: Global modal state tracker to prevent map interactions during modal open/close
         let modalState = {
@@ -404,7 +401,6 @@
 
         function saveToStorage() {
             localStorage.setItem('pipboy-items', JSON.stringify(items));
-            localStorage.setItem('pipboy-quests', JSON.stringify(quests));
             localStorage.setItem('pipboy-user', JSON.stringify(userProfile));
             localStorage.setItem('pipboy-waypoints', JSON.stringify(waypoints));
             localStorage.setItem('pipboy-factions', JSON.stringify(factions));
@@ -445,7 +441,11 @@
         function renderFunStats() {
             // Derived stats (computed live from existing data)
             const el = (id) => document.getElementById(id);
-            const qCompleted = quests.filter(q => q.completed).length;
+            const myQuestUid = localStorage.getItem('pipboy-uid');
+            const questRecords = Object.values(window.questStatsMirror || {}).filter(q => q?.type === 'multi-stage');
+            const progress = questRecords.map(q => q.progress?.[myQuestUid]).filter(Boolean);
+            const qCompleted = progress.filter(p => p.status === 'verified').length;
+            const qFailed = questRecords.filter(q => q.status === 'expired' && q.progress?.[myQuestUid]).length;
             const daysPassed = Math.floor((Date.now() - (funStats._bootTime || Date.now())) / 86400000) || 0;
             const locations = waypoints.filter(w => w.discovered).length || 1;
             const txSent = (typeof mailLog !== 'undefined') ? mailLog.filter(m => m.dir === 'out').length : 0;
@@ -472,9 +472,9 @@
             // Wild / cumulative stats
             if (el('fs-rads-total')) el('fs-rads-total').innerText = funStats.radsTotal;
             if (el('fs-distance')) el('fs-distance').innerText = (funStats.distance / 1000).toFixed(1) + ' KM';
-            if (el('fs-quests-completed')) el('fs-quests-completed').innerText = funStats.questsCompleted;
-            if (el('fs-quests-abandoned')) el('fs-quests-abandoned').innerText = funStats.questsAbandoned;
-            if (el('fs-quests-failed')) el('fs-quests-failed').innerText = funStats.questsFailed;
+            if (el('fs-quests-completed')) el('fs-quests-completed').innerText = qCompleted;
+            if (el('fs-quests-abandoned')) el('fs-quests-abandoned').innerText = progress.filter(p => p.status === 'abandoned').length;
+            if (el('fs-quests-failed')) el('fs-quests-failed').innerText = qFailed;
             if (el('fs-steals')) el('fs-steals').innerText = funStats.steals;
             if (el('fs-fetches')) el('fs-fetches').innerText = funStats.fetches;
             if (el('fs-assists')) el('fs-assists').innerText = funStats.assists;
@@ -1312,10 +1312,6 @@
                 glitchThreshold = Math.floor(Math.random() * 5) + 5; 
             }
 
-            checkQuestTimers(now);
-            if (document.getElementById('tab-data').classList.contains('active')) {
-                updateQuestCountdowns(now);
-            }
         }
         setInterval(updateClock, 1000);
         updateClock();
@@ -1351,7 +1347,6 @@
                 if (currentDataTab === 'quests') renderQuests();
                 if (currentDataTab === 'factions') renderFactions();
                 if (currentDataTab === 'wastelanders') { renderWastelanders(); renderLinkRequests(); }
-                if (currentDataTab === 'contracts') renderContracts(); // v0.55: ISSUE QUEST button must re-gate with dev mode
             }
             if (tabId === 'map') {
                 // Leaflet needs to calculate size AFTER display block is applied
@@ -1405,7 +1400,6 @@
                 const dataTarget = document.getElementById(`sub-${parentTab}-${subTabId}`);
                 if (dataTarget) dataTarget.classList.add('active');
                 if (subTabId === 'quests') renderQuests();
-                if (subTabId === 'contracts') renderContracts();
                 if (subTabId === 'wastelanders') { renderWastelanders(); renderLinkRequests(); }
             } else if (parentTab === 'mail') {
                 // v0.186: MAIL sub-tabs are now MAIL / CHRONICLE (chronicle is overseer-only)
@@ -1802,48 +1796,6 @@
             });
         }
 
-        // Quests & Timers Logic
-        function checkQuestTimers(now) {
-            let changed = false;
-            quests.forEach(q => {
-                if (!q.completed && !q.expired && q.expireTime) {
-                    if (now.getTime() >= q.expireTime) {
-                        q.expired = true;
-                        changed = true;
-                        bumpFunStat('questsFailed', 1); // v0.176: Track failed quests
-                        // v0.201: Show quest status modal with sound
-                        if (typeof showQuestStatusModal === 'function') {
-                            showQuestStatusModal('expired', q.name || 'UNKNOWN');
-                        } else {
-                            showNotification("QUEST EXPIRED: " + q.name);
-                            playSound('johnnyGuitar');
-                        }
-                    }
-                }
-            });
-            if (changed) {
-                saveToStorage();
-                if(document.getElementById('tab-data').classList.contains('active')) renderQuests();
-            }
-        }
-
-        function updateQuestCountdowns(now) {
-            quests.forEach(q => {
-                if(!q.completed && !q.expired && q.expireTime) {
-                    const el = document.getElementById(`timer-${q.id}`);
-                    if(el) {
-                        const diff = q.expireTime - now.getTime();
-                        if(diff > 0) {
-                            const hh = Math.floor(diff / (1000 * 60 * 60));
-                            const mm = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                            const ss = Math.floor((diff % (1000 * 60)) / 1000);
-                            el.innerText = `[T-${hh.toString().padStart(2,'0')}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}]`;
-                        }
-                    }
-                }
-            });
-        }
-
         function showNotification(msg) {
             // v0.145: Play notification sound
             playSound('notification');
@@ -2134,6 +2086,7 @@
                 if (tabText === 'ACTIVE') renderActiveQuests();
                 else if (tabText === 'AVAILABLE') renderAvailableQuests();
                 else if (tabText === 'ISSUED') renderIssuedQuests();
+                else if (tabText === 'COMPLETED') renderCompletedQuests();
             }
         }
 
@@ -2141,7 +2094,7 @@
         let firebaseQuests = {}; // Firebase firebaseQuests data
 
         function switchQuestTab(tabId) {
-            const tabs = ['active', 'completed', 'available', 'issued', 'verified'];
+            const tabs = ['active', 'completed', 'available', 'issued'];
             tabs.forEach(t => {
                 const navItem = document.querySelector(`#quest-sub-nav .sub-nav-item:nth-child(${tabs.indexOf(t) + 1})`);
                 const content = document.getElementById('quest-tab-' + t);
@@ -2157,7 +2110,6 @@
             else if (tabId === 'completed') renderCompletedQuests();
             else if (tabId === 'available') renderAvailableQuests();
             else if (tabId === 'issued') renderIssuedQuests();
-            else if (tabId === 'verified') renderVerifiedQuests();
         }
 
         function renderActiveQuests() {
@@ -2166,23 +2118,14 @@
             const myUid = localStorage.getItem('pipboy-uid');
             const html = [];
 
-            // Legacy local quests (from localStorage)
-            quests.forEach(q => {
-                if (q.completed || q.expired || q.abandoned) return;
-                html.push(`<div class="item-row" onclick="openQuestActionModal('${q.id}')">
-                    <div style="font-weight:bold;">${escapeHtml(q.name)}</div>
-                    <div style="font-size:0.85rem; opacity:0.7;">${escapeHtml(q.giver || 'UNKNOWN')}</div>
-                    <div style="font-size:0.85rem; opacity:0.6;">${q.expireTime ? 'EXPIRES: ' + new Date(q.expireTime).toLocaleString() : 'NO EXPIRY'}</div>
-                </div>`);
-            });
-
             // Firebase firebaseQuests I've accepted (excluding verified - those go to VERIFIED tab)
             Object.keys(firebaseQuests).forEach(id => {
                 const q = firebaseQuests[id];
+                if (!q || q.type !== 'multi-stage') return;
                 const prog = q.progress && q.progress[myUid];
                 if (!prog) return;
                 // v0.164: Filter out cancelled/expired quests and abandoned/rejected/verified progress
-                if (q.status === 'cancelled' || q.status === 'expired') return;
+                if (q.status === 'cancelled' || q.status === 'expired' || q.status === 'removed') return;
                 if (prog.status === 'rejected' || prog.status === 'verified' || prog.status === 'abandoned') return;
                 const statusText = prog.status === 'completed' ? '⏳ AWAITING VERIFICATION' : 'ACTIVE';
                 const strike = prog.status !== 'accepted' ? 'line-through' : 'none';
@@ -2205,40 +2148,26 @@
             const myUid = localStorage.getItem('pipboy-uid');
             const html = [];
 
-            // Legacy local quests (completed, expired, or abandoned)
-            quests.forEach(q => {
-                if (!q.completed && !q.expired && !q.abandoned) return;
-                const statusText = q.completed ? '✓ COMPLETED' : q.expired ? '⏰ EXPIRED' : '✗ ABANDONED';
-                const borderColor = q.completed ? '#39ff14' : q.expired ? '#ffb642' : '#ff3333';
-                html.push(`<div class="item-row" style="border-color:${borderColor}; opacity:0.6; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start;" onclick="openQuestActionModal('${q.id}')">
-                    <div>
-                        <div style="font-weight:bold; text-decoration:line-through;">${escapeHtml(q.name)}</div>
-                        <div style="font-size:0.85rem; opacity:0.7;">${escapeHtml(q.giver || 'UNKNOWN')}</div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size:0.85rem; color:${borderColor}; font-weight: bold;">${statusText}</div>
-                    </div>
-                </div>`);
-            });
-
             // Firebase quests with completed/rejected/verified/abandoned status OR cancelled/expired at quest level
             Object.keys(firebaseQuests).forEach(id => {
                 const q = firebaseQuests[id];
+                if (!q || q.type !== 'multi-stage') return;
                 const prog = q.progress && q.progress[myUid];
                 if (!prog) return;
                 
                 // v0.164: Show cancelled/expired quests in completed tab
                 const isCancelled = q.status === 'cancelled';
                 const isExpired = q.status === 'expired';
+                const isRemoved = q.status === 'removed';
                 const isVerified = prog.status === 'verified';
                 const isCompleted = prog.status === 'completed';
                 const isRejected = prog.status === 'rejected';
                 const isAbandoned = prog.status === 'abandoned';
                 
                 // Only show if quest is terminal or progress is terminal
-                if (!isCancelled && !isExpired && prog.status === 'accepted') return;
+                if (!isCancelled && !isExpired && !isRemoved && (prog.status === 'accepted' || prog.status === 'completed')) return;
                 
-                const statusText = isCancelled ? '✗ CANCELLED' :
+                const statusText = isRemoved ? '✗ REMOVED' : isCancelled ? '✗ CANCELLED' :
                                    isExpired ? '⏰ EXPIRED' :
                                    isVerified ? '✓ VERIFIED' : 
                                    isCompleted ? '⏳ AWAITING VERIFICATION' : 
@@ -2278,20 +2207,15 @@
 
             Object.keys(firebaseQuests).forEach(id => {
                 const q = firebaseQuests[id];
-                // v0.144: Filter out legacy pre-added quests
-                if (q.title === 'THE GATHERING' || q.title === 'SCAVENGER HUNT') return;
                 if (q.status !== 'open') return;
-                if (q.type === 'direct') return; // direct firebaseQuests not shown here
+                if (q.type !== 'multi-stage' || q.assignedTo) return; // Direct offers only arrive via recipient mail
                 const alreadyAccepted = q.progress && q.progress[myUid];
                 if (alreadyAccepted) return; // already accepted
-                const typeLabel = q.type === 'global' ? '🌍 GLOBAL' : q.type === 'bounty' ? '☠ BOUNTY' : q.type === 'multi-stage' ? '🔗 MULTI-STAGE' : q.type.toUpperCase();
-                const targetLine = q.type === 'bounty' ? `<div style="font-size:0.85rem; color:#ff3333;">TARGET: ${escapeHtml(q.targetName || 'UNKNOWN')}</div>` : '';
                 html.push(`<div class="item-row" onclick="openQuestModal('${id}')">
                     <div style="font-weight:bold;">${escapeHtml(q.title)}</div>
-                    <div style="font-size:0.85rem; opacity:0.7;">${typeLabel} — ${escapeHtml(q.issuerName || 'UNKNOWN')}</div>
-                    ${targetLine}
+                    <div style="font-size:0.85rem; opacity:0.7;">🔗 MULTI-STAGE — ${escapeHtml(q.issuerName || 'UNKNOWN')}</div>
                     ${q.reward ? `<div style="font-size:0.85rem; color:#5fc98e;">REWARD: ${escapeHtml(q.reward)}</div>` : ''}
-                    <div style="font-size:0.85rem; opacity:0.6;">${q.expiresAt ? 'EXPIRES: ' + new Date(q.expiresAt).toLocaleString() : 'NO EXPIRY'}</div>
+                    <div style="font-size:0.85rem; opacity:0.6;">${q.expiresAt ? 'ADVISORY TARGET: ' + new Date(q.expiresAt).toLocaleString() : 'NO TIME TARGET'}</div>
                 </div>`);
             });
 
@@ -2307,6 +2231,7 @@
 
             Object.keys(firebaseQuests).forEach(id => {
                 const q = firebaseQuests[id];
+                if (!q || q.type !== 'multi-stage') return;
                 if (q.issuerUid !== myUid && !isDev) return;
                 
                 // v0.106: Handle cancelled status with strikethrough
@@ -2316,10 +2241,10 @@
                 const isExpired = q.status === 'expired';
                 const isInactive = isCancelled || isRemoved || isExpired;
                 
-                // v0.193: Check if all progress is terminal (verified/rejected/abandoned)
+                // Rejected legacy progress can be retried; only verified/abandoned is terminal.
                 let allProgressTerminal = false;
                 if (q.progress && Object.keys(q.progress).length > 0) {
-                    const terminalStatuses = ['verified', 'rejected', 'abandoned'];
+                    const terminalStatuses = ['verified', 'abandoned'];
                     allProgressTerminal = Object.values(q.progress).every(p => 
                         terminalStatuses.includes(p.status)
                     );
@@ -2360,30 +2285,13 @@
             container.innerHTML = html.length ? html.join('') : '<p style="text-align:center; opacity:0.5;">NO ISSUED QUESTS</p>';
         }
 
-        function renderVerifiedQuests() {
-            // v0.116: Verified quests now appear in COMPLETED tab
-            // This tab is kept for backwards compatibility but shows message
-            const container = document.getElementById('quest-tab-verified');
-            if (!container) return;
-            container.innerHTML = '<p style="text-align:center; opacity:0.5;">VERIFIED QUESTS NOW APPEAR IN COMPLETED TAB</p>';
-        }
-
         function openCreateQuestModal() {
+            window.pendingDirectQuestRecipient = null;
+            window.pendingDirectQuestRecipientName = null;
             // v0.219: Only multi-stage quests exist, go straight to creation form
             createMultiStageQuestForm();
         }
 
-        function createQuestForm(type) {
-            // v0.219: Only multi-stage quests are supported now
-            if (type === 'multi-stage') {
-                createMultiStageQuestForm();
-                return;
-            }
-            
-            // Should never reach here, but just in case
-            showNotification('ERROR: Only multi-stage quests are supported');
-        }
-        
         // v0.153: Multi-stage quest creation
         function createMultiStageQuestForm() {
             // Initialize multi-stage quest data
@@ -2399,15 +2307,6 @@
             document.getElementById('create-quest-modal').style.display = 'flex';
             document.getElementById('cq-modal-title').innerText = 'CREATE QUEST';
             
-            // Clear form fields
-            document.getElementById('new-quest-title').value = '';
-            document.getElementById('new-quest-desc').value = '';
-            document.getElementById('new-quest-reward').value = '';
-            
-            // Hide recipient/target fields
-            document.getElementById('quest-recipient-group').style.display = 'none';
-            document.getElementById('quest-target-group').style.display = 'none';
-            
             // Show stage management UI
             showStageManagementUI();
         }
@@ -2417,26 +2316,7 @@
             const modal = document.getElementById('create-quest-modal');
             const content = modal.querySelector('.modal-content');
             
-            // v0.159: Preserve existing quest data when returning from stage edit
             const questData = window.pendingMultiStageQuest || { title: '', description: '', timeLimit: null, hideLockedStages: false };
-            
-            // v0.171: Hide regular form elements instead of replacing content
-            const formGroups = ['quest-recipient-group', 'quest-target-group'];
-            formGroups.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = 'none';
-            });
-            
-            // Hide individual form fields (they're inside form-group divs without IDs)
-            const formFields = ['new-quest-title', 'new-quest-desc', 'new-quest-reward'];
-            formFields.forEach(id => {
-                const el = document.getElementById(id);
-                if (el && el.parentElement) el.parentElement.style.display = 'none';
-            });
-            
-            // Hide submit button directly
-            const submitBtn = document.getElementById('submit-quest-btn');
-            if (submitBtn) submitBtn.style.display = 'none';
             
             // Update title
             document.getElementById('cq-modal-title').innerText = 'CREATE QUEST';
@@ -2540,7 +2420,7 @@
             
             // Add a new stage
             const stage = {
-                id: 'stage' + (window.pendingMultiStageQuest.stages.length + 1),
+                id: 'stage' + (Math.max(0, ...window.pendingMultiStageQuest.stages.map(s => parseInt(String(s.id).replace(/^stage/, ''), 10) || 0)) + 1),
                 type: type,
                 title: '',
                 description: '',
@@ -2629,7 +2509,8 @@
             stage.description = document.getElementById('edit-stage-desc').value.trim();
             stage.reward = document.getElementById('edit-stage-reward').value.trim() || null;
             const tl = document.getElementById('edit-stage-timelimit').value.trim();
-            stage.timeLimit = tl ? parseInt(tl) : null;
+            if (tl && (!/^\d+$/.test(tl) || +tl < 1)) { showNotification('STAGE TIME LIMIT MUST BE POSITIVE MINUTES'); return; }
+            stage.timeLimit = tl ? parseInt(tl, 10) : null;
             
             if (stage.type === 'scan-code') {
                 const qrEl = document.getElementById('edit-stage-qr');
@@ -2715,6 +2596,9 @@
                 const title = titleEl ? titleEl.value.trim() : '';
                 const description = descEl ? descEl.value.trim() : '';
                 const timeLimit = tlEl ? tlEl.value.trim() : '';
+                const hideLockedEl = document.getElementById('ms-hide-locked');
+                if (hideLockedEl) window.pendingMultiStageQuest.hideLockedStages = hideLockedEl.checked;
+                if (timeLimit && (!/^\d+$/.test(timeLimit) || +timeLimit < 1)) { showNotification('QUEST TIME LIMIT MUST BE POSITIVE MINUTES'); return; }
                 
                 // Show error inline in the form
                 const showError = (msg) => {
@@ -2776,7 +2660,7 @@
                     // v0.227: Mark as direct quest if recipient is set
                     assignedTo: window.pendingDirectQuestRecipient || null,
                     stages: window.pendingMultiStageQuest.stages.map((stage, idx) => ({
-                        id: 'stage' + (idx + 1),
+                        id: stage.id,
                         type: stage.type,
                         title: stage.title,
                         description: stage.description || '',
@@ -2805,6 +2689,7 @@
                         console.log('Quest created with key:', questId);
                         
                         // v0.227: If this is a direct quest, send quest-offer mail to recipient
+                        let successMsg = 'MULTI-STAGE QUEST CREATED';
                         if (window.pendingDirectQuestRecipient) {
                             const recipientUid = window.pendingDirectQuestRecipient;
                             const recipientName = window.pendingDirectQuestRecipientName || 'UNKNOWN';
@@ -2814,11 +2699,9 @@
                                 title: title,
                                 description: description
                             }, 'QUEST OFFER: ' + title + ' FROM ' + myName);
-                            showNotification('DIRECT QUEST SENT TO ' + recipientName.toUpperCase());
+                            successMsg = 'DIRECT QUEST SENT TO ' + recipientName.toUpperCase();
                             window.pendingDirectQuestRecipient = null;
                             window.pendingDirectQuestRecipientName = null;
-                        } else {
-                            showNotification('MULTI-STAGE QUEST CREATED');
                         }
                         
                         // Clean up recipient note if it exists
@@ -2827,6 +2710,7 @@
                         
                         closeModals();
                         switchQuestTab('issued');
+                        showNotification(successMsg); // v0.300: show after blanket close so it remains visible
                     })
                     .catch(err => {
                         console.error('Firebase push error:', err);
@@ -2839,258 +2723,12 @@
             }
         }
         
-        function openQuestRecipientPicker() {
-            // Filter to mutual contacts only
-            const mutualContacts = rolodex.filter(c => isMutualLink(c.uid));
-            if (mutualContacts.length === 0) {
-                showNotification('NO MUTUAL CONTACTS -- SCAN DATACARDS AND WAIT FOR ACCEPTANCE.');
-                return;
-            }
-            const buttons = mutualContacts.map(c => ({
-                label: c.name,
-                action: () => {
-                    document.getElementById('new-quest-recipient-display').value = c.name;
-                    document.getElementById('new-quest-recipient').value = c.uid;
-                }
-            }));
-            buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
-            showCustomPrompt('SELECT RECIPIENT (MUTUAL CONTACTS ONLY):', buttons);
-        }
-        
-        function openQuestTargetPicker() {
-            // Show all known wastelanders (rolodex + beacon data)
-            const buttons = [];
-            
-            // Add rolodex contacts (excluding self)
-            rolodex.forEach(c => {
-                if (c.uid === myMailUid) return; // v0.176: Cannot target yourself
-                buttons.push({
-                    label: c.name + ' (contact)',
-                    action: () => {
-                        document.getElementById('new-quest-target-display').value = c.name;
-                        document.getElementById('new-quest-target').value = c.uid;
-                    }
-                });
-            });
-            
-            // Add beacon wastelanders not already in rolodex
-            const rolodexUids = new Set(rolodex.map(c => c.uid));
-            Object.keys(lastKnownBeaconData).forEach(uid => {
-                if (!rolodexUids.has(uid) && uid !== myMailUid) {
-                    const beacon = lastKnownBeaconData[uid];
-                    const name = beacon.name || 'UNKNOWN';
-                    buttons.push({
-                        label: name + ' (signal)',
-                        action: () => {
-                            document.getElementById('new-quest-target-display').value = name;
-                            document.getElementById('new-quest-target').value = uid;
-                        }
-                    });
-                }
-            });
-            
-            if (buttons.length === 0) {
-                showNotification('NO KNOWN WASTELANDERS -- OPEN MAP TO DETECT SIGNALS.');
-                return;
-            }
-            
-            buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
-            showCustomPrompt('SELECT BOUNTY TARGET:', buttons);
-        }
-        
-        function submitQuestFromModal() {
-            const type = window.pendingQuestType;
-            if (!type) {
-                showNotification('ERROR: No quest type selected');
-                return;
-            }
-            
-            // For bounty, populate window.selectedBountyTarget from hidden field
-            if (type === 'bounty') {
-                const targetUid = document.getElementById('new-quest-target').value;
-                const targetName = document.getElementById('new-quest-target-display').value;
-                if (!targetUid) {
-                    showNotification('TARGET REQUIRED');
-                    return;
-                }
-                // v0.176: Cannot create bounty on yourself
-                if (targetUid === myMailUid) {
-                    showNotification('CANNOT CREATE BOUNTY ON YOURSELF');
-                    return;
-                }
-                window.selectedBountyTarget = {
-                    uid: targetUid,
-                    name: targetName
-                };
-            }
-            
-            closeModals();
-            submitQuest(type);
-        }
-
-        function submitQuest(type) {
-            const title = document.getElementById('new-quest-title').value.trim();
-            const desc = document.getElementById('new-quest-desc').value.trim();
-            const reward = document.getElementById('new-quest-reward').value.trim();
-            if (!title) { showNotification('TITLE REQUIRED'); return; }
-            const myUid = myMailUid; // v0.204: Use myMailUid for consistency
-            const myName = userProfile.name || 'UNKNOWN';
-            
-            // v0.204: Verify UID exists
-            if (!myUid) {
-                showNotification('ERROR: No user ID found. Please restart app.');
-                console.error('submitQuest: myMailUid is null/undefined');
-                return;
-            }
-            
-            const questData = {
-                type: type,
-                title: title,
-                description: desc,
-                reward: reward || null,
-                issuerUid: myUid,
-                issuerName: myName,
-                status: 'open',
-                createdAt: Date.now()
-            };
-            if (type === 'direct') {
-                const recipientUid = document.getElementById('new-quest-recipient').value;
-                if (!recipientUid) { showNotification('RECIPIENT REQUIRED'); return; }
-                questData.assignedTo = recipientUid;
-            } else if (type === 'bounty') {
-                const targetUid = document.getElementById('new-quest-target').value;
-                const targetName = document.getElementById('new-quest-target-display').value;
-                if (!targetUid) { showNotification('TARGET REQUIRED'); return; }
-                questData.targetUid = targetUid;
-                questData.targetName = targetName;
-            }
-            const questRef = window.firebaseRef(window.db, 'quests/');
-            console.log('submitQuest: Creating quest with data:', questData);
-            window.firebasePush(questRef, questData)
-                .then(ref => {
-                    const questId = ref.key;
-                    console.log('submitQuest: Quest created with ID:', questId);
-                    showNotification('QUEST CREATED (ID: ' + questId.substring(0, 8) + '...)');
-                    if (type === 'direct') {
-                        // Send quest-offer mail to recipient
-                        const recipientUid = document.getElementById('new-quest-recipient').value;
-                        console.log('submitQuest: Sending quest-offer mail to:', recipientUid);
-                        queueMail(recipientUid, 'quest-offer', {
-                            questId: questId,
-                            title: title,
-                            description: desc,
-                            reward: reward
-                        }, 'QUEST OFFER: ' + title);
-                    }
-                    // v0.204: Force refresh of firebaseQuests to ensure quest appears immediately
-                    if (window.db) {
-                        window.firebaseOnValue(window.firebaseRef(window.db, 'quests/'), (snap) => {
-                            firebaseQuests = snap.val() || {};
-                            console.log('submitQuest: Refreshed firebaseQuests, count:', Object.keys(firebaseQuests).length);
-                            renderIssuedQuests();
-                        }, () => {}, { onlyOnce: true });
-                    }
-                    switchQuestTab('issued');
-                })
-                .catch(err => {
-                    console.error('submitQuest: Error creating quest:', err);
-                    showNotification('ERROR CREATING QUEST: ' + err.message);
-                });
-        }
-
         function openQuestModal(id) {
-            try {
-                // Debug: confirm function is being called
-                console.log('openQuestModal called with id:', id);
-                
-                const q = firebaseQuests[id];
-                if (!q) {
-                    showNotification('QUEST NOT FOUND - ID: ' + id);
-                    console.error('Quest not found in firebaseQuests:', id);
-                    return;
-                }
-                
-                // v0.160: Route multi-stage quests to dedicated handler
-                if (q.type === 'multi-stage') {
-                    openMultiStageQuestModal(id);
-                    return;
-                }
-                
-                console.log('Quest data:', q);
-                
-                const myUid = localStorage.getItem('pipboy-uid');
-                if (!myUid) {
-                    showNotification('ERROR: No user ID found');
-                    return;
-                }
-                
-                const prog = q.progress && q.progress[myUid];
-                const isAccepted = prog && prog.status !== 'rejected';
-                const isCompleted = prog && prog.status === 'completed';
-                const isVerified = prog && prog.status === 'verified';
-                
-                console.log('Quest state:', { isAccepted, isCompleted, isVerified, prog });
-                
-                const buttons = [];
-                if (!isAccepted && q.type !== 'direct') {
-                    // Not accepted yet - show accept button
-                    buttons.push({ label: 'ACCEPT QUEST', action: () => acceptQuest(id) });
-                } else if (isAccepted && !isCompleted && !isVerified) {
-                    // Accepted but not completed - show action buttons
-                    const hasPendingPhoto = window.pendingQuestPhoto && window.pendingQuestPhoto.questId === id && window.pendingQuestPhoto.photo;
-                    
-                    if (q.type === 'bounty') {
-                        // Bounty quests: scan datacard OR submit photo evidence
-                        if (hasPendingPhoto) {
-                            buttons.push({ label: '📷 SUBMIT EVIDENCE', color: '#39ff14', action: () => completeQuest(id) });
-                            buttons.push({ label: 'CHANGE PHOTO', action: () => attachPhotoToQuest(id) });
-                        } else {
-                            buttons.push({ label: 'ATTACH PHOTO EVIDENCE', action: () => attachPhotoToQuest(id) });
-                        }
-                        buttons.push({ label: 'SCAN TARGET DATACARD', action: () => scanBountyTarget(id) });
-                    } else {
-                        // Non-bounty quests: photo evidence required
-                        if (hasPendingPhoto) {
-                            buttons.push({ label: '📷 SUBMIT EVIDENCE', color: '#39ff14', action: () => completeQuest(id) });
-                            buttons.push({ label: 'CHANGE PHOTO', action: () => attachPhotoToQuest(id) });
-                        } else {
-                            buttons.push({ label: 'ATTACH PHOTO EVIDENCE', action: () => attachPhotoToQuest(id) });
-                        }
-                    }
-                    // v0.116: Allow self-reject/abandon
-                    buttons.push({ label: 'ABANDON QUEST', color: '#ff3333', action: () => abandonQuest(id) });
-                } else if ((isCompleted || isVerified) && prog.evidencePhoto) {
-                    // Completed or verified - only allow viewing evidence (read-only)
-                    buttons.push({ label: 'VIEW EVIDENCE PHOTO', action: () => viewEvidencePhoto(prog.evidencePhoto) });
-                }
-                buttons.push({ label: 'CLOSE', action: () => {} });
-                
-                const typeLabel = q.type === 'global' ? '🌍 GLOBAL' : q.type === 'bounty' ? '☠ BOUNTY' : q.type === 'multi-stage' ? '🔗 MULTI-STAGE' : '📋 DIRECT';
-                const statusText = isVerified ? '✓ VERIFIED' : isCompleted ? '⏳ AWAITING VERIFICATION' : isAccepted ? 'ACTIVE' : 'NOT ACCEPTED';
-                const targetLine = q.type === 'bounty' ? `\nTARGET: ${escapeHtml(q.targetName || 'UNKNOWN')}` : '';
-                const desc = q.description ? `\n\n${escapeHtml(q.description)}` : '';
-                const rewardLine = q.reward ? `\n\nREWARD: ${escapeHtml(q.reward)}` : '';
-                
-                // v0.159: Multi-stage quests show stages list
-                let stagesLine = '';
-                if (q.type === 'multi-stage' && q.stages) {
-                    stagesLine = '\n\n━━━ STAGES ━━━';
-                    q.stages.forEach((stage, idx) => {
-                        const stageStatus = stage.status === 'available' ? '○' : stage.status === 'completed' ? '✓' : stage.status === 'locked' ? '🔒' : '○';
-                        stagesLine += `\n${stageStatus} ${idx + 1}. ${escapeHtml(stage.title)} (${stage.type.toUpperCase()})`;
-                    });
-                }
-                
-                const promptText = `${typeLabel}\n${escapeHtml(q.title)}${desc}${targetLine}${rewardLine}${stagesLine}\n\nSTATUS: ${statusText}\nISSUED BY: ${escapeHtml(q.issuerName || 'UNKNOWN')}`;
-                
-                console.log('Opening prompt with text:', promptText);
-                console.log('Buttons:', buttons);
-                
-                showCustomPrompt(promptText, buttons);
-            } catch (err) {
-                console.error('Error in openQuestModal:', err);
-                showNotification('ERROR OPENING QUEST: ' + err.message);
+            const q = firebaseQuests[id];
+            if (!q || q.type !== 'multi-stage') {
+                showNotification('OLD QUEST FORMAT RETIRED'); return;
             }
+            openMultiStageQuestModal(id);
         }
 
         // v0.160: Multi-stage quest verification system
@@ -3102,8 +2740,9 @@
                 const myUid = myMailUid;
                 if (!myUid) return;
                 
+                if (q.assignedTo && q.assignedTo !== myUid) { showNotification('DIRECT QUEST IS FOR ITS RECIPIENT ONLY'); return; }
                 const prog = q.progress && q.progress[myUid];
-                const isAccepted = prog && prog.status !== 'rejected';
+                const isAccepted = !!prog && prog.status !== 'rejected' && prog.status !== 'abandoned';
                 const isCompleted = prog && prog.status === 'completed';
                 const isVerified = prog && prog.status === 'verified';
                 
@@ -3115,9 +2754,16 @@
                 let statusText = 'NOT ACCEPTED';
                 if (isVerified) { statusText = '✓ VERIFIED'; }
                 else if (isCompleted) { statusText = '⏳ AWAITING VERIFICATION'; }
+                else if (prog?.status === 'abandoned') { statusText = 'ABANDONED'; }
+                else if (prog?.status === 'rejected') { statusText = 'REJECTED — RETRY AVAILABLE'; }
+                else if (q.status !== 'open') { statusText = q.status.toUpperCase(); }
                 else if (isAccepted) { statusText = 'IN PROGRESS'; }
                 
                 text += `\n[${statusText}]`;
+                if (prog?.acceptedAt && q.timeLimit > 0) {
+                    const remaining = prog.acceptedAt + q.timeLimit * 60000 - Date.now();
+                    text += remaining < 0 ? `\n⚠ QUEST TIME LIMIT PASSED (${q.timeLimit} MIN) — ISSUER DECIDES` : `\n⏱ QUEST TIME LEFT: ${Math.ceil(remaining / 60000)} MIN`;
+                }
                 if (q.reward) text += `\nReward: ${escapeHtml(q.reward)}`;
                 
                 // Stages list
@@ -3148,6 +2794,11 @@
                     const stageTitle = isRedacted ? '[REDACTED]' : escapeHtml(stage.title);
                     
                     text += `\n${statusIcon} Stage ${idx + 1}: ${stageTitle} [${statusLabel}]`;
+                    if (!isRedacted && stageStatus === 'available' && prog?.acceptedAt && stage.timeLimit > 0) {
+                        const startedAt = idx === 0 ? prog.acceptedAt : (userStages[stages[idx - 1].id]?.completedAt || prog.acceptedAt);
+                        const remaining = startedAt + stage.timeLimit * 60000 - Date.now();
+                        text += remaining < 0 ? `\n   ⚠ STAGE TIME LIMIT PASSED — ISSUER DECIDES` : `\n   ⏱ STAGE TIME LEFT: ${Math.ceil(remaining / 60000)} MIN`;
+                    }
                     if (!isRedacted) {
                         if (stage.description) text += `\n   ${escapeHtml(stage.description)}`;
                         text += `\n   Type: ${stage.type.toUpperCase()}`;
@@ -3158,9 +2809,11 @@
                 // Action buttons
                 const buttons = [];
                 
-                if (!isAccepted) {
+                if (!prog && q.status === 'open') {
                     buttons.push({ label: 'ACCEPT QUEST', action: () => acceptMultiStageQuest(id) });
-                } else if (isAccepted && !isCompleted && !isVerified && currentStageIdx >= 0) {
+                } else if (prog?.status === 'rejected' && q.status === 'open') {
+                    buttons.push({ label: 'RETRY FINAL STAGE', action: () => resumeRejectedMultiStageQuest(id) });
+                } else if (isAccepted && q.status === 'open' && prog.status === 'accepted' && currentStageIdx >= 0) {
                     const currentStage = stages[currentStageIdx];
                     
                     // v0.287: All stage types use "SUBMIT EVIDENCE" (photo evidence)
@@ -3196,6 +2849,29 @@
             }
         }
 
+        // v0.300: Repair old MAIL rejections that wrote terminal 'rejected' instead
+        // of returning the player to 'accepted'. Only the affected player can retry.
+        function resumeRejectedMultiStageQuest(id) {
+            const q = firebaseQuests[id];
+            const uid = myMailUid;
+            if (!q || q.type !== 'multi-stage' || q.status !== 'open' ||
+                (q.assignedTo && q.assignedTo !== uid) || q.progress?.[uid]?.status !== 'rejected' ||
+                !Array.isArray(q.stages) || !q.stages.length) {
+                showNotification('QUEST RETRY NOT AVAILABLE'); return;
+            }
+            const finalId = q.stages[q.stages.length - 1].id;
+            const updates = {
+                status: 'accepted', completedAt: null, evidencePhoto: null,
+                [`stages/${finalId}/status`]: 'available',
+                [`stages/${finalId}/completedAt`]: null,
+                [`stages/${finalId}/evidencePhoto`]: null,
+                [`stages/${finalId}/evidenceScan`]: null
+            };
+            window.firebaseUpdate(window.firebaseRef(window.db, `quests/${id}/progress/${uid}`), updates)
+                .then(() => { showNotification('FINAL STAGE REOPENED — SUBMIT NEW EVIDENCE'); switchQuestTab('active'); })
+                .catch(err => showNotification('RETRY FAILED: ' + err.message));
+        }
+
         // v0.169: Abandon multi-stage quest (with confirmation)
         function abandonMultiStageQuest(id) {
             showCustomPrompt('ABANDON THIS MULTI-STAGE QUEST?\n\nAll stage progress will be lost. This cannot be undone.', [
@@ -3226,15 +2902,9 @@
             if (!myUid) return;
             
             const q = firebaseQuests[id];
-            if (!q) return;
-            
-            // v0.230: Check if bounty already claimed by another player
-            const hasBountyStage = (q.stages || []).some(s => s.type === 'bounty');
-            if (hasBountyStage && q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
-                showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
-                playSound('johnnyGuitar');
-                return;
-            }
+            if (!q || q.type !== 'multi-stage' || q.status !== 'open') { showNotification('QUEST IS NO LONGER AVAILABLE'); return; }
+            if (q.assignedTo && q.assignedTo !== myUid) { showNotification('DIRECT QUEST IS FOR ITS RECIPIENT ONLY'); return; }
+            if (q.progress && q.progress[myUid]) { showNotification('QUEST ALREADY ACCEPTED'); return; }
             
             const stages = q.stages || [];
             const stageProgress = {};
@@ -3413,12 +3083,18 @@
                 return;
             }
             
+            if (q.type !== 'multi-stage' || q.status !== 'open' || (q.assignedTo && q.assignedTo !== myUid) || q.progress?.[myUid]?.status !== 'accepted') {
+                showNotification('QUEST IS NOT ACTIVE FOR THIS UNIT'); return;
+            }
             const stages = q.stages || [];
             const stage = stages[stageIdx];
             if (!stage) {
                 console.error('[Multi-Stage] Stage not found:', stageIdx);
                 showNotification('ERROR: Stage not found');
                 return;
+            }
+            if (q.progress?.[myUid]?.stages?.[stage.id]?.status !== 'available') {
+                showNotification('STAGE NOT AVAILABLE'); return;
             }
             
             // v0.230: Check if bounty stage already claimed by another player
@@ -3504,6 +3180,7 @@
                 questId: questId,
                 title: q.title,
                 completedByName: myName,
+                completedByUid: myMailUid,
                 completedAt: Date.now(),
                 multiStage: true
             }, 'VERIFY: ' + q.title + ' COMPLETED BY ' + myName);
@@ -3584,7 +3261,9 @@
                         color: '#42b6ff', 
                         action: () => {
                             // View evidence for this user's completion
-                            if (p.evidencePhoto) {
+                            if (q.type === 'multi-stage' && p.stages) {
+                                viewMultiStageEvidence(q, p);
+                            } else if (p.evidencePhoto) {
                                 viewEvidencePhoto(p.evidencePhoto);
                             } else if (p.evidenceScan) {
                                 showNotification('EVIDENCE: DATACARD SCAN (UID: ' + p.evidenceScan + ')');
@@ -3656,14 +3335,7 @@
                             <label>REWARD</label>
                             <input type="text" id="edit-stage-${idx}-reward" class="pip-input vk-target" readonly onclick="openVk('edit-stage-${idx}-reward')" maxlength="100" value="${escapeHtml(stage.reward || '')}">
                         </div>
-                        <div class="form-group">
-                            <label>STATUS</label>
-                            <select id="edit-stage-${idx}-status" class="pip-input" style="width: 100%;">
-                                <option value="locked" ${stageStatus === 'locked' ? 'selected' : ''}>LOCKED</option>
-                                <option value="available" ${stageStatus === 'available' ? 'selected' : ''}>AVAILABLE</option>
-                                <option value="completed" ${stageStatus === 'completed' ? 'selected' : ''}>COMPLETED</option>
-                            </select>
-                        </div>
+
                     </div>`;
                 });
                 
@@ -3697,20 +3369,17 @@
             // Update stages for multi-stage quests
             if (editingQuestData.type === 'multi-stage' && editingQuestData.stages) {
                 const stages = editingQuestData.stages || [];
-                updates.stages = {};
-                
-                stages.forEach((stage, idx) => {
+                updates.stages = stages.map((stage, idx) => {
                     const stageTitle = document.getElementById(`edit-stage-${idx}-title`)?.value || stage.title;
                     const stageDesc = document.getElementById(`edit-stage-${idx}-desc`)?.value || stage.description;
                     const stageReward = document.getElementById(`edit-stage-${idx}-reward`)?.value || stage.reward;
-                    const stageStatus = document.getElementById(`edit-stage-${idx}-status`)?.value || stage.status;
                     
-                    updates.stages[stage.id] = {
+                    return {
                         ...stage,
                         title: stageTitle,
                         description: stageDesc,
                         reward: stageReward || null,
-                        status: stageStatus
+                        status: idx === 0 ? 'available' : 'locked'
                     };
                 });
             }
@@ -3735,168 +3404,11 @@
                 });
         }
 
-        function acceptQuest(id) {
-            const myUid = myMailUid; // Use myMailUid instead of localStorage
-            const myName = userProfile.name || 'UNKNOWN';
-            const q = firebaseQuests[id];
-            
-            // v0.230: Check if bounty already claimed by another player
-            if (q && q.type === 'bounty' && q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
-                showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
-                playSound('johnnyGuitar');
-                return;
-            }
-            
-            const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
-            window.firebaseSet(progRef, {
-                acceptedAt: Date.now(),
-                status: 'accepted',
-                completedByName: myName
-            })
-                .then(() => {
-                    closeCustomPrompt();
-                    showNotification('QUEST ACCEPTED');
-                    // v0.191: Log quest accepted to chronicle
-                    logChronicleEvent('questAccept', myUid, myName, {
-                        questTitle: q?.title || 'UNKNOWN',
-                        questType: q?.type || 'unknown'
-                    });
-                    // Refresh the active quests tab after a short delay to allow Firebase listener to fire
-                    setTimeout(() => {
-                        switchQuestTab('active');
-                        renderActiveQuests();
-                    }, 500);
-                })
-                .catch(err => showNotification('ERROR: ' + err.message));
-        }
-
-        function abandonQuest(id) {
-            const q = firebaseQuests[id];
-            const questTitle = q?.title || 'UNKNOWN QUEST';
-            
-            console.log(`[Abandon] Preparing to abandon quest ${id}: ${questTitle}`);
-            
-            showCustomPrompt('ABANDON THIS QUEST?\n\nThis will remove it from your active quests.', [
-                { label: 'ABANDON QUEST', color: '#ff3333', action: () => {
-                    const myUid = myMailUid;
-                    if (!myUid) {
-                        console.error('[Abandon] No user ID available');
-                        showNotification('ERROR: No user ID');
-                        return;
-                    }
-                    
-                    const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
-                    console.log('[Abandon] Updating Firebase path:', `quests/${id}/progress/${myUid}`);
-                    
-                    window.firebaseUpdate(progRef, {
-                        status: 'abandoned',
-                        abandonedAt: Date.now()
-                    })
-                        .then(() => {
-                            console.log('[Abandon] Firebase update successful');
-                            closeCustomPrompt();
-                            
-                            // Always try to show modal, with fallback to notification
-                            try {
-                                if (typeof showQuestStatusModal === 'function') {
-                                    console.log('[Abandon] Showing abandonment modal');
-                                    showQuestStatusModal('abandoned', questTitle);
-                                } else {
-                                    throw new Error('showQuestStatusModal not available');
-                                }
-                            } catch (e) {
-                                console.error('[Abandon] Modal failed, using fallback:', e);
-                                showNotification('QUEST ABANDONED');
-                                if (typeof playSound === 'function') {
-                                    playSound('johnnyGuitar');
-                                }
-                            }
-                            
-                            // Switch to completed tab
-                            setTimeout(() => {
-                                switchQuestTab('completed');
-                                renderCompletedQuests();
-                            }, 500);
-                        })
-                        .catch(err => {
-                            console.error('[Abandon] Firebase update failed:', err);
-                            showNotification('ERROR ABANDONING QUEST: ' + err.message);
-                        });
-                }},
-                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
-        }
-
-        function completeQuest(id) {
-            try {
-                const myUid = myMailUid; // Use myMailUid instead of localStorage (set at boot)
-                const myName = userProfile.name || 'UNKNOWN';
-                const q = firebaseQuests[id];
-                if (!q) {
-                    showNotification('ERROR: Quest not found');
-                    return;
-                }
-                
-                // v0.117: Check if evidence photo is attached
-                const hasEvidence = window.pendingQuestPhoto && window.pendingQuestPhoto.questId === id;
-                
-                if (!hasEvidence) {
-                    // No evidence - show prompt to provide evidence
-                    showCustomPrompt('PROVIDE EVIDENCE\n\nPlease attach a photo as evidence before completing this quest.', [
-                        { label: 'ATTACH PHOTO', action: () => {
-                            closeCustomPrompt();
-                            attachPhotoToQuest(id);
-                        }},
-                        { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-                    ]);
-                    return;
-                }
-                
-                const updates = {
-                    status: 'completed',
-                    completedAt: Date.now(),
-                    completedByName: myName,
-                    evidencePhoto: window.pendingQuestPhoto.photo
-                };
-                window.pendingQuestPhoto = null;
-                
-                const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
-                window.firebaseUpdate(progRef, updates)
-                    .then(() => {
-                        closeCustomPrompt();
-                        // v0.201: Show quest status modal with sound
-                        if (typeof showQuestStatusModal === 'function') {
-                            showQuestStatusModal('completed', q.title || 'UNKNOWN');
-                        } else {
-                            showNotification('QUEST COMPLETED - AWAITING VERIFICATION');
-                        }
-                        // v0.191: Log quest completed to chronicle
-                        logChronicleEvent('questComplete', myUid, myName, {
-                            questTitle: q.title || 'UNKNOWN',
-                            questType: q.type || 'unknown',
-                            hasEvidence: !!updates.evidencePhoto
-                        });
-                        // Send verify-request mail to issuer
-                        if (q.issuerUid) {
-                            queueMail(q.issuerUid, 'verify-request', {
-                                questId: id,
-                                title: q.title,
-                                completedByName: myName,
-                                evidencePhoto: updates.evidencePhoto
-                            }, 'VERIFY: ' + q.title + ' COMPLETED BY ' + myName);
-                        }
-                        switchQuestTab('active');
-                    })
-                    .catch(err => showNotification('ERROR: ' + err.message));
-            } catch (err) {
-                showNotification('ERROR COMPLETING QUEST: ' + err.message);
-            }
-        }
-
         function verifyQuest(id, uid) {
             const isDev = localStorage.getItem('pipboy-dev-mode') === 'true';
             const myUid = myMailUid; // v0.163: Use myMailUid
             const q = firebaseQuests[id];
+            if (!q || q.progress?.[uid]?.status !== 'completed') { showNotification('COMPLETION NO LONGER PENDING'); return; }
             if (q.issuerUid !== myUid && !isDev) {
                 showNotification('ONLY ISSUER OR OVERSEER CAN VERIFY');
                 return;
@@ -3987,43 +3499,45 @@
             showPhoto();
         }
 
-        function rejectQuest(id, uid) {
-            const isDev = localStorage.getItem('pipboy-dev-mode') === 'true';
-            const myUid = myMailUid; // v0.163: Use myMailUid
+        // v0.300: Reopen the final stage for retry, retaining earlier completed stages.
+        function rejectQuestCompletion(id, uid, onSuccess) {
             const q = firebaseQuests[id];
-            if (q.issuerUid !== myUid && !isDev) {
-                showNotification('ONLY ISSUER OR OVERSEER CAN REJECT');
-                return;
+            const myUid = myMailUid;
+            const isDev = localStorage.getItem('pipboy-dev-mode') === 'true';
+            if (!q || q.type !== 'multi-stage' || !Array.isArray(q.stages) || !q.stages.length ||
+                (q.issuerUid !== myUid && !isDev) || q.progress?.[uid]?.status !== 'completed') {
+                showNotification('COMPLETION NOT FOUND OR NOT AUTHORIZED'); return;
             }
-            showCustomPrompt('REJECT THIS COMPLETION?', [
-                { label: 'REJECT', color: '#ff3333', action: () => {
-                    const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${uid}`);
-                    window.firebaseUpdate(progRef, {
-                        status: 'accepted',
-                        rejectedBy: myUid,
-                        rejectedAt: Date.now()
-                    })
-                        .then(() => {
-                            closeCustomPrompt();
-                            showNotification('COMPLETION REJECTED - QUEST RETURNED TO ACTIVE');
-                            // v0.194: Send rejection mail to user with Johnny Guitar sound trigger
-                            if (q.progress && q.progress[uid] && q.progress[uid].completedByName) {
-                                queueMail(uid, 'quest-rejected', {
-                                    questId: id,
-                                    title: q.title,
-                                    rejectedBy: userProfile.name || 'UNKNOWN'
-                                }, 'QUEST REJECTED: ' + q.title);
-                            }
-                            renderIssuedQuests();
-                        })
-                        .catch(err => showNotification('ERROR: ' + err.message));
-                }},
+            const updates = {
+                status: 'accepted', completedAt: null, evidencePhoto: null,
+                completedByScan: null, rejectedBy: myUid, rejectedAt: Date.now()
+            };
+            const finalId = q.stages[q.stages.length - 1].id;
+            updates[`stages/${finalId}/status`] = 'available';
+            updates[`stages/${finalId}/completedAt`] = null;
+            updates[`stages/${finalId}/evidencePhoto`] = null;
+            updates[`stages/${finalId}/evidenceScan`] = null;
+            const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${uid}`);
+            window.firebaseUpdate(progRef, updates).then(() => {
+                queueMail(uid, 'quest-rejected', {
+                    questId: id, title: q.title, rejectedBy: userProfile.name || 'UNKNOWN'
+                }, 'QUEST REJECTED: ' + q.title);
+                if (onSuccess) onSuccess();
+                showNotification('COMPLETION REJECTED — FINAL STAGE REOPENED');
+                renderIssuedQuests();
+            }).catch(err => showNotification('ERROR REJECTING QUEST: ' + err.message));
+        }
+
+        function rejectQuest(id, uid) {
+            showCustomPrompt('REJECT THIS COMPLETION? THE PLAYER CAN REDO THE FINAL STAGE.', [
+                { label: 'REJECT', color: '#ff3333', action: () => rejectQuestCompletion(id, uid) },
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
         }
 
         function cancelQuest(id) {
             const q = firebaseQuests[id];
+            if (!q || q.issuerUid !== myMailUid) { showNotification('ONLY THE ISSUER CAN CANCEL'); return; }
             const hasProgress = q && q.progress && Object.keys(q.progress).length > 0;
             
             const confirmText = hasProgress 
@@ -4047,6 +3561,7 @@
         
         // v0.110: Uncancel a cancelled quest
         function uncancelQuest(id) {
+            if (firebaseQuests[id]?.issuerUid !== myMailUid || firebaseQuests[id]?.status !== 'cancelled') { showNotification('QUEST CANNOT BE UNCANCELLED'); return; }
             showCustomPrompt('UNCANCEL THIS QUEST?', [
                 { label: 'UNCANCEL QUEST', color: '#39ff14', action: () => {
                     const questRef = window.firebaseRef(window.db, `quests/${id}`);
@@ -4064,6 +3579,7 @@
 
         // v0.120: Complete quest globally - marks as expired for non-completers
         function completeQuestGlobally(id) {
+            if (firebaseQuests[id]?.issuerUid !== myMailUid || firebaseQuests[id]?.status !== 'open') { showNotification('ONLY AN OPEN ISSUED QUEST CAN BE EXPIRED'); return; }
             showCustomPrompt('COMPLETE QUEST GLOBALLY?\n\nThis will:\n• Mark quest as EXPIRED for users who haven\'t completed it\n• Keep COMPLETED status for users who already completed it\n• Prevent new completions', [
                 { label: 'COMPLETE GLOBALLY', color: '#ffb642', action: () => {
                     const questRef = window.firebaseRef(window.db, `quests/${id}`);
@@ -4099,6 +3615,7 @@
         }
         
         function executeRemoveQuest(id, reason) {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true') { showNotification('OVERSEER ACCESS REQUIRED'); return; }
             const questRef = window.firebaseRef(window.db, `quests/${id}`);
             window.firebaseUpdate(questRef, { 
                 status: 'removed',
@@ -4114,149 +3631,6 @@
                 .catch(err => showNotification('ERROR: ' + err.message));
         }
 
-        function attachPhotoToQuest(id) {
-            photoPickMode = 'quest-evidence';
-            window.pendingQuestPhoto = { questId: id };
-            document.getElementById('pp-title').innerText = 'SELECT PHOTO EVIDENCE';
-            
-            if (!photoArchive.length) {
-                // Databank empty - offer to take a photo
-                showCustomPrompt('NO PHOTOS IN DATABANK', [
-                    { label: '📷 TAKE PHOTO NOW', action: () => {
-                        closeCustomPrompt();
-                        snapNowForPicker();
-                    }},
-                    { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {
-                        window.pendingQuestPhoto = null;
-                    }}
-                ]);
-                return;
-            }
-            
-            let html = '<div class="photo-tile-grid">';
-            photoArchive.forEach((e, i) => { html += `<div class="photo-tile" onclick="pickPhotoForQuestEvidence(${i})"><img src="${entryPip(e)}"></div>`; });
-            document.getElementById('pp-grid').innerHTML = html + '</div>';
-            document.getElementById('photo-pick-modal').style.display = 'flex';
-        }
-
-        function pickPhotoForQuestEvidence(idx) {
-            const entry = photoArchive[idx];
-            if (!entry) return;
-            document.getElementById('photo-pick-modal').style.display = 'none';
-            if (window.pendingQuestPhoto) {
-                window.pendingQuestPhoto.photo = entryPip(entry);
-                showNotification('PHOTO ATTACHED - NOW COMPLETE QUEST');
-                openQuestModal(window.pendingQuestPhoto.questId);
-            }
-        }
-
-        function scanBountyTarget(id) {
-            showCustomPrompt('SCAN TARGET\'S DATACARD QR TO PROVE COMPLETION', [
-                { label: 'START SCANNING', action: () => {
-                    closeCustomPrompt();
-                    window.pendingBountyScan = id;
-                    document.getElementById('qr-scan-modal').style.display = 'flex';
-                    startQRScanner();
-                }},
-                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
-        }
-
-        // v0.91: View evidence photo full-size
-        function viewEvidencePhoto(photo) {
-            const src = typeof photo === 'object' ? entryPip(photo) : photo;
-            showCustomPrompt('EVIDENCE PHOTO', [
-                { label: 'CLOSE', action: () => {} }
-            ]);
-            const cpImg = document.getElementById('cp-img');
-            if (cpImg) { cpImg.src = src; cpImg.style.display = 'block'; }
-        }
-
-        function handleBountyScan(scannedUid) {
-            if (!window.pendingBountyScan) return false;
-            const questId = window.pendingBountyScan;
-            window.pendingBountyScan = null;
-            const q = firebaseQuests[questId];
-            if (!q || q.type !== 'bounty') return false;
-            if (scannedUid !== q.targetUid) {
-                showNotification('WRONG TARGET - SCAN THE BOUNTY TARGET\'S DATACARD');
-                return true;
-            }
-            // v0.158: Bounty scan completion - the scan IS the proof, no photo required
-            completeBountyByScan(questId);
-            return true;
-        }
-
-        // v0.158: Complete bounty quest via datacard scan (scan = proof, no photo needed)
-        function completeBountyByScan(id) {
-            try {
-                const myUid = myMailUid;
-                const myName = userProfile.name || 'UNKNOWN';
-                const q = firebaseQuests[id];
-                if (!q) {
-                    showNotification('ERROR: Quest not found');
-                    return;
-                }
-                
-                // v0.230: Check if bounty already claimed by another player
-                if (q.status === 'bounty_claimed' && q.bountyClaimedBy !== myUid) {
-                    showNotification('BOUNTY ALREADY CLAIMED BY ' + (q.bountyClaimedByName || 'ANOTHER WASTELANDER'));
-                    playSound('johnnyGuitar');
-                    return;
-                }
-                
-                // v0.175: Bounty scan = auto-verify (scan is sufficient proof)
-                const updates = {
-                    status: 'verified',
-                    completedAt: Date.now(),
-                    completedByName: myName,
-                    completedByScan: true,
-                    verifiedAt: Date.now(),
-                    verifiedBy: myUid,
-                    verifiedByName: myName
-                };
-                
-                // If a photo was also attached, include it
-                if (window.pendingQuestPhoto && window.pendingQuestPhoto.questId === id && window.pendingQuestPhoto.photo) {
-                    updates.evidencePhoto = window.pendingQuestPhoto.photo;
-                    window.pendingQuestPhoto = null;
-                }
-                
-                // v0.230: Mark bounty as globally claimed
-                const questRef = window.firebaseRef(window.db, `quests/${id}`);
-                const questUpdates = {
-                    status: 'bounty_claimed',
-                    bountyClaimedBy: myUid,
-                    bountyClaimedByName: myName,
-                    bountyClaimedAt: Date.now()
-                };
-                
-                const progRef = window.firebaseRef(window.db, `quests/${id}/progress/${myUid}`);
-                
-                // Update both quest-level and user progress
-                Promise.all([
-                    window.firebaseUpdate(questRef, questUpdates),
-                    window.firebaseUpdate(progRef, updates)
-                ])
-                    .then(() => {
-                        closeCustomPrompt();
-                        showNotification('☠ BOUNTY CLAIMED & VERIFIED');
-                        playSound('xp');
-                        // v0.191: Log bounty claim to chronicle
-                        logChronicleEvent('bountyClaim', myUid, myName, {
-                            questTitle: q.title || 'UNKNOWN',
-                            targetName: q.targetName || 'UNKNOWN',
-                            hasEvidence: !!updates.evidencePhoto
-                        });
-                        // v0.175: No verify-request needed - scan is proof
-                        switchQuestTab('active');
-                    })
-                    .catch(err => showNotification('ERROR: ' + err.message));
-            } catch (err) {
-                showNotification('ERROR COMPLETING BOUNTY: ' + err.message);
-            }
-        }
-
         // v0.201: Track previous quest statuses to detect verification
         let previousQuestStatuses = {};
         
@@ -4270,6 +3644,15 @@
                     // v0.205: Make a deep copy of old quests to properly detect changes
                     const oldQuests = JSON.parse(JSON.stringify(firebaseQuests || {}));
                     const newQuests = snap.val() || {};
+                    // v0.300: Recover older Overseer edits that stored stages as an
+                    // object; UI and progression consistently consume ordered arrays.
+                    Object.values(newQuests).forEach(q => {
+                        if (q?.type === 'multi-stage' && q.stages && !Array.isArray(q.stages)) {
+                            q.stages = Object.values(q.stages).sort((a, b) =>
+                                (parseInt(String(a.id).replace(/^stage/, ''), 10) || 0) -
+                                (parseInt(String(b.id).replace(/^stage/, ''), 10) || 0));
+                        }
+                    });
                     
                     console.log('[Quests Listener] Received update, quest count:', Object.keys(newQuests).length);
                     
@@ -4309,6 +3692,8 @@
                     }
                     
                     firebaseQuests = newQuests;
+                    window.questStatsMirror = newQuests;
+                    if (document.getElementById('tab-stat')?.classList.contains('active')) renderFunStats();
                     
                     // v0.208: Skip verification check on first load (prevents showing modal for already-verified quests)
                     if (questsListenerFirstLoad) {
@@ -4346,6 +3731,7 @@
                         if (tabText === 'ACTIVE') renderActiveQuests();
                         else if (tabText === 'AVAILABLE') renderAvailableQuests();
                         else if (tabText === 'ISSUED') renderIssuedQuests();
+                        else if (tabText === 'COMPLETED') renderCompletedQuests();
                     }
                 } catch (e) {
                     console.error('[Quests Listener] Error:', e);
@@ -4760,163 +4146,6 @@
             );
         }
 
-        let activeQuestId = null;
-
-        function openQuestActionModal(id) {
-            activeQuestId = id;
-            const q = quests.find(x => x.id === id);
-            if (!q) return;
-
-            document.getElementById('qa-title').innerText = q.name;
-            document.getElementById('qa-giver').innerText = "GIVER: " + (q.giver || "UNKNOWN");
-            document.getElementById('qa-loc').innerText = "LOCATION: " + (q.location || "UNKNOWN");
-            
-            let timeText = q.timeStr || "--:--";
-            if (q.expired) timeText += " (EXPIRED)";
-            else if (q.abandoned) timeText += " (ABANDONED)";
-            document.getElementById('qa-time').innerText = "TIME LIMIT: " + timeText;
-
-            let objHTML = q.objectives.map(o => `<div>- ${o}</div>`).join('');
-            document.getElementById('qa-obj').innerHTML = objHTML;
-
-            const toggleBtn = document.getElementById('qa-toggle-btn');
-            const abandonBtn = document.getElementById('qa-abandon-btn');
-
-            if (q.completed) {
-                toggleBtn.style.display = 'block';
-                toggleBtn.innerText = "MARK AS INCOMPLETE";
-                abandonBtn.style.display = 'block';
-                abandonBtn.innerText = "REMOVE QUEST";
-                abandonBtn.onclick = executeQuestRemove;
-            } else if (q.abandoned) {
-                toggleBtn.style.display = 'none';
-                abandonBtn.style.display = 'block';
-                abandonBtn.innerText = "REMOVE QUEST";
-                abandonBtn.onclick = executeQuestRemove;
-            } else {
-                toggleBtn.style.display = 'block';
-                toggleBtn.innerText = "MARK AS COMPLETE";
-                abandonBtn.style.display = 'block';
-                abandonBtn.innerText = "REMOVE QUEST";
-                abandonBtn.onclick = executeQuestRemove;
-            }
-
-            document.getElementById('quest-action-modal').style.display = 'flex';
-        }
-
-        function executeQuestToggle() {
-            if (!activeQuestId) return;
-            const quest = quests.find(q => q.id === activeQuestId);
-            if (!quest) return;
-
-            // If it's already completed and they are UN-checking it, just do it.
-            if (quest.completed) {
-                quest.completed = false;
-                if (quest.giver && quest.giver !== "UNKNOWN WASTELANDER") {
-                    const linkedFaction = factions.find(f => f.name === quest.giver);
-                    if (linkedFaction) linkedFaction.rep -= 10;
-                }
-                saveToStorage();
-                renderQuests();
-                closeModals();
-                return;
-            }
-
-            // If they are trying to COMPLETE it, ask for confirmation to prevent accidental clicks
-            showCustomPrompt(`MARK "${quest.name}" AS COMPLETE?`, [
-                {
-                    label: "YES, COMPLETE QUEST",
-                    action: () => {
-                        quest.completed = true;
-                        // v0.63: track quest completion in fun stats
-                        bumpFunStat('questsCompleted', 1);
-                        // Track quest type if available (steal/fetch/assist)
-                        if (quest.type === 'STEAL') bumpFunStat('steals', 1);
-                        else if (quest.type === 'FETCH') bumpFunStat('fetches', 1);
-                        else if (quest.type === 'ASSIST') bumpFunStat('assists', 1);
-                        // v0.31: player-issued CONTRACTs write fulfillment back to the
-                        // original mailbox letter so the GIVER's outbox flips to
-                        // "CONTRACT FULFILLED" on their next outbox status refresh.
-                        if (quest.contractKey && window.db) {
-                            try { window.firebaseSet(window.firebaseRef(window.db, 'mail/' + myMailUid + '/' + quest.contractKey + '/fulfilled'), true).catch(()=>{}); } catch(e){}
-                        }
-                        // v0.44 item-17: ALSO mail the giver a fulfil-notice letter so the
-                        // news arrives as an actual transmission (pings their MAIL PING),
-                        // not just an outbox status flip on their next lazy refresh
-                        if (quest.contractGiver) {
-                            queueMail(quest.contractGiver, 'msg', {
-                                text: 'CONTRACT FULFILLED: ' + quest.name + ' — BY ' + String(userProfile.name || 'UNKNOWN').toUpperCase(),
-                                fulfilledTitle: quest.name
-                            }, 'FULFILLED: ' + quest.name);
-                        }
-                        if (quest.giver && quest.giver !== "UNKNOWN WASTELANDER") {
-                            const linkedFaction = factions.find(f => f.name === quest.giver);
-                            if (linkedFaction) {
-                                linkedFaction.rep += 10;
-                                showNotification(`QUEST COMPLETE! +10 REP WITH ${linkedFaction.name}`);
-                            }
-                        } else {
-                            showNotification(`QUEST COMPLETE: ${quest.name}`);
-                        }
-                        saveToStorage(); 
-                        renderQuests(); 
-                        closeModals();
-                    }
-                },
-                {
-                    label: "CANCEL",
-                    color: "var(--pip-color-dim)",
-                    action: () => { /* Do nothing */ }
-                }
-            ]);
-        }
-
-        function executeQuestAbandon() {
-            if (!activeQuestId) return;
-            const quest = quests.find(q => q.id === activeQuestId);
-            if (quest) {
-                quest.abandoned = true;
-                // v0.63: track quest abandonment in fun stats
-                bumpFunStat('questsAbandoned', 1);
-                saveToStorage();
-                renderQuests();
-                closeModals();
-            }
-        }
-
-        function executeQuestReengage() {
-            if (!activeQuestId) return;
-            const quest = quests.find(q => q.id === activeQuestId);
-            if (quest) {
-                showCustomPrompt(`WHAT WOULD YOU LIKE TO DO WITH "${quest.name}"?`, [
-                    {
-                        label: "RE-ENGAGE QUEST",
-                        action: () => {
-                            quest.abandoned = false;
-                            saveToStorage();
-                            renderQuests();
-                            closeModals();
-                        }
-                    },
-                    {
-                        label: "PERMANENTLY DELETE",
-                        color: "#ff3333",
-                        action: () => {
-                            quests = quests.filter(q => q.id !== activeQuestId);
-                            saveToStorage();
-                            renderQuests();
-                            closeModals();
-                        }
-                    },
-                    {
-                        label: "CANCEL",
-                        color: "var(--pip-color-dim)",
-                        action: () => { /* Do nothing */ }
-                    }
-                ]);
-            }
-        }
-
         // Modals Logic
         let pendingAuthAction = null;
         let pendingRepId = null;
@@ -4938,34 +4167,6 @@
             document.getElementById('action-modal').style.display = 'flex';
         }
         function openAddModal() { document.getElementById('add-name').value = ''; document.getElementById('add-modal').style.display = 'flex'; }
-        function openAddQuestModal() {
-            document.getElementById('q-name').value = '';
-            // v0.55: selects became themed prompt pickers; defaults ride state vars
-            qTypeVal = 'MAIN'; document.getElementById('q-type').value = 'MAIN QUEST';
-            qGiverVal = 'UNKNOWN WASTELANDER'; document.getElementById('q-giver').value = 'UNKNOWN WASTELANDER';
-            document.getElementById('add-quest-modal').style.display = 'flex';
-        }
-
-        // v0.55: quest composer pickers -- themed prompts, no native dropdown chrome
-        let qTypeVal = 'MAIN';
-        let qGiverVal = 'UNKNOWN WASTELANDER';
-        function pickQuestType() {
-            showCustomPrompt('QUEST CLASSIFICATION?', [
-                { label: 'MAIN QUEST', action: () => { qTypeVal = 'MAIN'; document.getElementById('q-type').value = 'MAIN QUEST'; } },
-                { label: 'SIDE QUEST', action: () => { qTypeVal = 'SIDE'; document.getElementById('q-type').value = 'SIDE QUEST'; } },
-                { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
-        }
-        function pickQuestGiver() {
-            const buttons = factions.map(f => ({
-                label: (f.name || 'UNKNOWN').toUpperCase(),
-                action: () => { qGiverVal = f.name; document.getElementById('q-giver').value = (f.name || 'UNKNOWN').toUpperCase(); }
-            }));
-            buttons.unshift({ label: 'UNKNOWN WASTELANDER', action: () => { qGiverVal = 'UNKNOWN WASTELANDER'; document.getElementById('q-giver').value = 'UNKNOWN WASTELANDER'; } });
-            buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
-            showCustomPrompt('CONTRACT ISSUER (GIVEN BY)?', buttons);
-        }
-        
         let tempWpLat = null;
         let tempWpLng = null;
         function openAddWaypointModal(lat, lng) {
@@ -5154,18 +4355,7 @@
                     showNotification(`RECEIVED P2P ITEM: ${data.item.name}`);
                 } 
                 else if (data.action === 'SHARE_QUEST') {
-                    // Check if already got it
-                    if (quests.find(q => q.name === data.quest.name)) {
-                        showNotification("QUEST LOG ALREADY CONTAINS THIS ENTRY.");
-                        return;
-                    }
-                    
-                    const newQuest = {...data.quest};
-                    newQuest.id = Date.now();
-                    quests.push(newQuest);
-                    saveToStorage();
-                    if (currentDataTab === 'quests') renderQuests();
-                    showNotification(`NEW QUEST UPLOADED: ${newQuest.name}`);
+                    showNotification('OLD QUEST TRANSFERS ARE RETIRED. CREATE A NEW MULTI-STAGE QUEST.');
                 }
                 else {
                     showNotification("UNRECOGNIZED P2P DATA PROTOCOL.");
@@ -5234,29 +4424,6 @@
             ]);
         }
 
-        function generateQuestQR() {
-            if (!activeQuestId) return;
-            const quest = quests.find(q => q.id === activeQuestId);
-            if (!quest) return;
-
-            const payload = {
-                action: 'SHARE_QUEST',
-                quest: { 
-                    name: quest.name, 
-                    type: quest.type, 
-                    giver: quest.giver,
-                    location: quest.location,
-                    timeStr: quest.timeStr,
-                    expireTime: quest.expireTime,
-                    objectives: [...quest.objectives],
-                    completed: false,
-                    expired: false,
-                    abandoned: false
-                }
-            };
-            generateQR(JSON.stringify(payload));
-        }
-
         function modifyItem(amount) {
             const i = items.findIndex(x => x.id === activeItemId);
             if (i > -1) { items[i].quantity += amount; if (items[i].quantity <= 0) items.splice(i, 1); closeModals(); saveToStorage(); renderInventory(currentInvTab); }
@@ -5266,71 +4433,6 @@
         function saveNewItem() {
             items.push({ id: Date.now(), name: (document.getElementById('add-name').value || 'ITEM').toUpperCase(), type: document.getElementById('add-type').value, effects: document.getElementById('add-effects').value, quantity: 1, equipped: false });
             saveToStorage(); switchSubTab('inv', document.getElementById('add-type').value); closeModals();
-        }
-
-        function saveNewQuest() {
-            try {
-                let rawObjs = document.getElementById('q-obj').value;
-                let objectivesList = rawObjs ? rawObjs.split(',').map(o => o.trim()) : ["No objectives given"];
-                
-                let timeInputEl = document.getElementById('q-time');
-                let timeInput = timeInputEl ? timeInputEl.value.trim() : "";
-                
-                let expireTimestamp = null;
-                let displayTime = '--:--';
-
-                if(timeInput) {
-                    let h = NaN, m = NaN;
-                    
-                    let looksLikeClockTime = timeInput.includes(':') || /^\d{3,4}$/.test(timeInput);
-
-                    if (looksLikeClockTime) {
-                        if(timeInput.includes(':')) {
-                            let parts = timeInput.split(':');
-                            h = parseInt(parts[0], 10);
-                            m = parseInt(parts[1], 10);
-                        } else {
-                            let clean = timeInput.replace(/[^0-9]/g, '');
-                            if(clean.length >= 3) {
-                                h = parseInt(clean.substring(0, clean.length-2), 10);
-                                m = parseInt(clean.substring(clean.length-2), 10);
-                            }
-                        }
-                    }
-
-                    if(!isNaN(h) && !isNaN(m)) {
-                        const d = new Date();
-                        d.setHours(h, m, 0, 0);
-                        if (d < new Date()) d.setDate(d.getDate() + 1);
-                        expireTimestamp = d.getTime();
-                        displayTime = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
-                    } else {
-                        displayTime = timeInput; 
-                    }
-                }
-
-                let newQuest = {
-                    id: Date.now(),
-                    name: (document.getElementById('q-name').value || 'UNKNOWN QUEST').toUpperCase(),
-                    type: qTypeVal,   // v0.55: themed picker state
-                    giver: qGiverVal, // v0.55: themed picker state
-                    location: (document.getElementById('q-loc').value || 'UNKNOWN').toUpperCase(),
-                    timeStr: displayTime,
-                    expireTime: expireTimestamp,
-                    objectives: objectivesList,
-                    completed: false,
-                    expired: false
-                };
-                
-                quests.push(newQuest);
-                
-                saveToStorage(); 
-                renderQuests(); 
-                closeModals();
-            } catch(e) {
-                console.error("Quest save error", e);
-                showNotification("SYSTEM ERROR SAVING QUEST.");
-            }
         }
 
         // Radio Logic
@@ -6389,8 +5491,45 @@
                 + '<h3 style="color:#ff3333; margin-bottom:8px;">EVENT RESET</h3>'
                 + '<p style="font-size:0.9rem; opacity:0.75; margin-bottom:10px;">PERMANENTLY RESET PLAYER PROGRESS. CONFIRMATIONS AND RESET PASSWORD REQUIRED.</p>'
                 + '<button class="pip-btn" onclick="confirmFreshSlateReset()" style="border-color:#ff3333; color:#ff3333; border-style:dashed;">[⚠ FRESH SLATE]</button>'
+                + '<button class="pip-btn" onclick="confirmLegacyQuestPurge()" style="border-color:#ffb642; color:#ffb642; border-style:dashed;">[⚠ PURGE OLD QUESTS FROM FIREBASE]</button>'
                 + '</div>';
             // v0.86: auto-load contracts to verify after rendering
+        }
+
+        // v0.300: Remove old direct/global/bounty quest records only on Overseer's
+        // explicit two-step command. Never delete live data automatically on page load.
+        function confirmLegacyQuestPurge() {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true') {
+                showNotification('OVERSEER ACCESS REQUIRED'); return;
+            }
+            if (!window.db) { showNotification('NO SATELLITE LINK'); return; }
+            const paths = ['quests', 'globalContracts', 'bounties'];
+            Promise.all(paths.map(path => window.firebaseGet(window.firebaseRef(window.db, path)))).then(snaps => {
+                const jobs = [];
+                const questsData = snaps[0].val() || {};
+                Object.keys(questsData).forEach(id => {
+                    if (questsData[id]?.type !== 'multi-stage') jobs.push('quests/' + id);
+                });
+                ['globalContracts', 'bounties'].forEach((path, idx) => {
+                    Object.keys(snaps[idx + 1].val() || {}).forEach(id => jobs.push(path + '/' + id));
+                });
+                if (!jobs.length) { showNotification('NO OLD FIREBASE QUESTS TO PURGE'); return; }
+                showCustomPrompt('PERMANENTLY DELETE ' + jobs.length + ' LEGACY QUEST/CONTRACT/BOUNTY RECORDS AND THEIR PLAYER PROGRESS? CURRENT MULTI-STAGE QUESTS WILL BE KEPT.', [
+                    { label: 'REVIEW FINAL WARNING', color: '#ff3333', action: () => {
+                        showCustomPrompt('FINAL WARNING: ' + jobs.length + ' FIREBASE RECORDS WILL BE DELETED FOR EVERY PLAYER. THIS CANNOT BE UNDONE.', [
+                            { label: 'DELETE LEGACY QUESTS', color: '#ff3333', action: () => {
+                                Promise.allSettled(jobs.map(path => window.firebaseRemove(window.firebaseRef(window.db, path))))
+                                    .then(results => {
+                                        const failed = results.filter(r => r.status === 'rejected').length;
+                                        showNotification(failed ? 'PURGE PARTIAL: ' + failed + ' FAILED — RETRY AFTER CHECKING RULES' : 'LEGACY RECORDS DELETED: ' + jobs.length);
+                                    });
+                            }},
+                            { label: 'CANCEL', action: () => {} }
+                        ]);
+                    }},
+                    { label: 'CANCEL', action: () => {} }
+                ]);
+            }).catch(err => showNotification('PURGE READ FAILED: ' + err.message));
         }
 
         // v0.63: overseer user management — view ALL users who have EVER broadcast, remove dead ones
@@ -6962,9 +6101,6 @@
                     setTimeout(() => {
                         switchMainTab('data');
                         // Reopen the appropriate picker
-                        if (window.pendingQuestPhoto && window.pendingQuestPhoto.questId) {
-                            attachPhotoToQuest(window.pendingQuestPhoto.questId);
-                        }
                     }, 500);
                     return;
                 }
@@ -7098,12 +6234,6 @@
             // Close camera and refresh picker
             closeQuickCam();
             
-            // Refresh photo picker if it was open
-            if (window.pendingQuestPhoto && window.pendingQuestPhoto.questId) {
-                setTimeout(() => {
-                    attachPhotoToQuest(window.pendingQuestPhoto.questId);
-                }, 300);
-            }
         }
 
         function closeQuickCam() {
@@ -7853,7 +6983,8 @@
 
         // --- Comms state (all persisted locally) ---
         let rolodex = JSON.parse(localStorage.getItem('pipboy-rolodex') || '[]');
-        let outbox = JSON.parse(localStorage.getItem('pipboy-outbox') || '[]');
+        let outbox = JSON.parse(localStorage.getItem('pipboy-outbox') || '[]').filter(e => e.type !== 'quest');
+        localStorage.setItem('pipboy-outbox', JSON.stringify(outbox));
         let mailLog = JSON.parse(localStorage.getItem('pipboy-maillog') || '[]');
         let mailSeen = JSON.parse(localStorage.getItem('pipboy-mail-seen') || '[]');
         let mailProcessed = JSON.parse(localStorage.getItem('pipboy-mail-processed') || '[]');
@@ -8045,7 +7176,6 @@
             }
             
             // v0.91: Check for pending bounty scan (unified quest system)
-            if (handleBountyScan(uid)) return;
             
             if (isContact(uid)) { showNotification(contactByUid(uid).name + ' ALREADY LOGGED IN WASTELANDERS MET.'); return; }
             showCustomPrompt('ADD ' + name + ' TO WASTELANDERS MET? THEY WILL BE NOTIFIED OF THE LINK.', [
@@ -8852,6 +7982,7 @@
             for (let key in data) {
                 const l = data[key];
                 if (!l || !l.type) continue;
+                if (l.type === 'quest') { retireLetter(key); continue; } // Retired legacy contract mail
                 if (mailProcessed.indexOf(key) !== -1) {
                     // Housekeeping: letters we already consumed that the sender never cleared
                     // are purged after 2 hours so mailboxes don't accrete forever.
@@ -8874,7 +8005,7 @@
                     continue; // handshakes are prompts, never inbox rows
                 }
                 // v0.290: verify-request messages bypass contact check (quest completions should always be visible)
-                if (isContact(l.from) || l.type === 'verify-request') {
+                if (isContact(l.from) || l.type === 'verify-request' || l.type === 'quest-rejected') {
                     inboxLetters[key] = l;
                     if (mailSeen.indexOf(key) === -1) {
                         mailSeen.push(key); changedSeen = true;
@@ -8939,6 +8070,7 @@
             if (l.type === 'quest') return 'QUEST: ' + (l.payload && l.payload.title ? l.payload.title : '');
             if (l.type === 'quest-offer') return '📋 QUEST OFFER: ' + (l.payload && l.payload.title ? l.payload.title : '');
             if (l.type === 'verify-request') return '⏳ VERIFY: ' + (l.payload && l.payload.title ? l.payload.title : '') + ' BY ' + (l.payload && l.payload.completedByName ? l.payload.completedByName : 'UNKNOWN');
+            if (l.type === 'quest-rejected') return '✗ QUEST REJECTED: ' + (l.payload?.title || '');
             if (l.type === 'item') return 'ITEM: ' + (l.payload && l.payload.name ? l.payload.name : '') + ' x' + (l.payload && l.payload.quantity ? l.payload.quantity : 1);
             // v0.47: message letters can carry attachments — say so on the ACTION row
             if (l.type === 'msg' && l.payload && (l.payload.photo || l.payload.item)) {
@@ -9049,12 +8181,6 @@
                     const img = document.getElementById('cp-img');
                     if (img) { img.src = p.photo; img.style.display = 'block'; } // full transit copy, pre-log
                 }
-            } else if (l.type === 'quest') {
-                const p = l.payload || {};
-                showCustomPrompt('QUEST FROM ' + from + ': "' + (p.title || '') + '"' + (p.brief ? ' — ' + p.brief : '') + ' — OBJ: ' + ((p.objectives || []).join(' / ') || 'NONE') + (p.reward ? ' — REWARD: ' + p.reward : ''), [
-                    { label: 'ACCEPT CONTRACT', action: () => acceptLegacyQuestFromMail(key, l) },
-                    { label: 'DECLINE', color: '#ff3333', action: () => declineLetter(key) }
-                ]);
             } else if (l.type === 'quest-offer') {
                 const p = l.payload || {};
                 showCustomPrompt('DIRECT QUEST FROM ' + from + ':\n\n"' + (p.title || '') + '"' + (p.description ? '\n\n' + p.description : '') + (p.reward ? '\n\nREWARD: ' + p.reward : ''), [
@@ -9071,27 +8197,16 @@
                 let completionAlreadyProcessed = false;
                 let completerProgress = null;
                 let completedByUid = null;
-                if (quest && quest.progress && p.completedByName) {
-                    // Try to find by completedByName first
-                    completedByUid = Object.keys(quest.progress).find(uid => {
-                        return quest.progress[uid].completedByName === p.completedByName;
-                    });
-                    
-                    // v0.290: Fallback - if name matching fails, try to find any completed progress
-                    if (!completedByUid) {
-                        completedByUid = Object.keys(quest.progress).find(uid => {
-                            return quest.progress[uid].status === 'completed' || 
-                                   quest.progress[uid].status === 'verified' || 
-                                   quest.progress[uid].status === 'rejected';
-                        });
-                    }
-                    
-                    if (completedByUid) {
-                        completerProgress = quest.progress[completedByUid];
-                        completionAlreadyProcessed = completerProgress.status === 'verified' || completerProgress.status === 'rejected';
+                if (quest && quest.progress) {
+                    // New letters carry UID; old letters use their sender UID. Never
+                    // choose an arbitrary completion based on a duplicated name.
+                    const uid = p.completedByUid || l.from;
+                    if (uid && quest.progress[uid]) {
+                        completedByUid = uid;
+                        completerProgress = quest.progress[uid];
+                        completionAlreadyProcessed = completerProgress.status !== 'completed';
                     }
                 }
-                
                 // v0.226: Get evidence photo from quest progress if not in mail payload
                 let hasEvidence = !!p.evidencePhoto;
                 if (!hasEvidence && completerProgress) {
@@ -9200,21 +8315,15 @@
             
             // v0.203: Check if quest exists in Firebase before accepting
             const quest = firebaseQuests[questId];
-            if (!quest) {
-                showNotification('QUEST NOT FOUND - MAY HAVE BEEN CANCELLED');
+            if (!quest || quest.type !== 'multi-stage' || quest.status !== 'open') {
+                showNotification('QUEST NOT FOUND OR NO LONGER OPEN');
                 declineLetter(key);
                 return;
             }
             
-            // v0.230: Check if bounty already claimed by another player
-            const hasBountyStage = (quest.stages || []).some(s => s.type === 'bounty');
-            if ((quest.type === 'bounty' || hasBountyStage) && quest.status === 'bounty_claimed' && quest.bountyClaimedBy !== myUid) {
-                showNotification('BOUNTY ALREADY CLAIMED BY ' + (quest.bountyClaimedByName || 'ANOTHER WASTELANDER'));
-                playSound('johnnyGuitar');
-                declineLetter(key);
-                return;
+            if (quest.assignedTo !== myUid || (quest.progress && quest.progress[myUid])) {
+                showNotification('QUEST NOT ASSIGNED TO THIS UNIT OR ALREADY ACCEPTED'); return;
             }
-            
             // v0.227: Initialize stage progress for multi-stage quests
             const progressData = {
                 acceptedAt: Date.now(),
@@ -9255,56 +8364,39 @@
                 .catch(err => showNotification('ERROR: ' + err.message));
         }
 
-        // v0.91: Verify a quest completion from mail
-        function verifyQuestFromMail(key, l) {
-            const myUid = localStorage.getItem('pipboy-uid');
+        // v0.300: Resolve by UID, never by display name or another player's completion.
+        function resolveQuestMailCompletion(l) {
             const questId = l.payload && l.payload.questId;
-            if (!questId) { showNotification('QUEST DATA MISSING'); declineLetter(key); return; }
-            // Find the uid of the person who completed it
-            const completedByUid = Object.keys(firebaseQuests[questId] && firebaseQuests[questId].progress || {}).find(uid => {
-                const p = firebaseQuests[questId].progress[uid];
-                return p.status === 'completed' && p.completedByName === (l.payload && l.payload.completedByName);
-            });
-            if (!completedByUid) { showNotification('COMPLETION NOT FOUND'); return; }
-            const progRef = window.firebaseRef(window.db, 'quests/' + questId + '/progress/' + completedByUid);
-            window.firebaseUpdate(progRef, {
-                status: 'verified',
-                verifiedBy: myUid,
-                verifiedByName: userProfile.name || 'UNKNOWN',
-                verifiedAt: Date.now()
-            })
-                .then(() => {
-                    showNotification('COMPLETION VERIFIED');
-                    markProcessed(key);
-                    retireLetter(key);
-                    if (mailTabActive()) renderMail();
-                })
-                .catch(err => showNotification('ERROR: ' + err.message));
+            const quest = questId && firebaseQuests[questId];
+            const uid = (l.payload && l.payload.completedByUid) || l.from;
+            if (!quest || !uid || !quest.progress || quest.progress[uid]?.status !== 'completed') return null;
+            const myUid = myMailUid;
+            if (quest.issuerUid !== myUid && localStorage.getItem('pipboy-dev-mode') !== 'true') return null;
+            return { questId, quest, uid };
         }
 
-        // v0.91: Reject a quest completion from mail
-        function rejectQuestFromMail(key, l) {
-            const myUid = localStorage.getItem('pipboy-uid');
-            const questId = l.payload && l.payload.questId;
-            if (!questId) { showNotification('QUEST DATA MISSING'); declineLetter(key); return; }
-            const completedByUid = Object.keys(firebaseQuests[questId] && firebaseQuests[questId].progress || {}).find(uid => {
-                const p = firebaseQuests[questId].progress[uid];
-                return p.status === 'completed' && p.completedByName === (l.payload && l.payload.completedByName);
-            });
-            if (!completedByUid) { showNotification('COMPLETION NOT FOUND'); return; }
-            const progRef = window.firebaseRef(window.db, 'quests/' + questId + '/progress/' + completedByUid);
+        function verifyQuestFromMail(key, l) {
+            const match = resolveQuestMailCompletion(l);
+            if (!match) { showNotification('COMPLETION NOT FOUND OR ALREADY PROCESSED'); return; }
+            const progRef = window.firebaseRef(window.db, 'quests/' + match.questId + '/progress/' + match.uid);
             window.firebaseUpdate(progRef, {
-                status: 'rejected',
-                rejectedBy: myUid,
-                rejectedAt: Date.now()
-            })
-                .then(() => {
-                    showNotification('COMPLETION REJECTED');
-                    markProcessed(key);
-                    retireLetter(key);
-                    if (mailTabActive()) renderMail();
-                })
-                .catch(err => showNotification('ERROR: ' + err.message));
+                status: 'verified', verifiedBy: myMailUid,
+                verifiedByName: userProfile.name || 'UNKNOWN', verifiedAt: Date.now()
+            }).then(() => {
+                showNotification('COMPLETION VERIFIED');
+                markProcessed(key); retireLetter(key);
+                if (mailTabActive()) renderMail();
+            }).catch(err => showNotification('ERROR: ' + err.message));
+        }
+
+        function rejectQuestFromMail(key, l) {
+            const match = resolveQuestMailCompletion(l);
+            if (!match) { showNotification('COMPLETION NOT FOUND OR ALREADY PROCESSED'); return; }
+            rejectQuestCompletion(match.questId, match.uid, () => {
+                // REJECT is a decision; unlike DISMISS, it consumes the request.
+                markProcessed(key); retireLetter(key);
+                if (mailTabActive()) renderMail();
+            });
         }
 
         // v0.45: compact log-copy thumbs so PHOTO TRANSMISSIONS stay viewable from the
@@ -9389,33 +8481,6 @@
             }
             buttons.push({ label: 'NOTED', action: () => acceptMsg(key, l) });
             showCustomPrompt(from + ' REPORTS CONTRACT FULFILLED: "' + title + '".' + (myCopy ? ' YOU HOLD AN OPEN COPY OF THIS CONTRACT.' : ''), buttons);
-        }
-
-        function acceptLegacyQuestFromMail(key, l) {
-            const p = l.payload || {};
-            const objectives = [];
-            if (p.brief) objectives.push('BRIEF: ' + p.brief);
-            (p.objectives || []).forEach(o => objectives.push(o));
-            if (p.reward) objectives.push('REWARD: ' + p.reward);
-            if (!objectives.length) objectives.push('Completion terms: see contract giver.');
-            quests.push({
-                id: Date.now(),
-                name: (p.title || 'UNNAMED CONTRACT').toUpperCase(),
-                type: 'CONTRACT',
-                giver: (l.fromName || 'UNKNOWN').toUpperCase(),
-                location: (p.location || 'P2P LINK'),
-                timeStr: p.timeStr || '--:--',
-                expireTime: p.expireTime || null,
-                objectives: objectives,
-                completed: false, expired: false, abandoned: false,
-                contractKey: key, contractGiver: l.from
-            });
-            flagLetter(key, 'claimed');
-            markProcessed(key);
-            saveToStorage();
-            renderQuests();
-            showNotification('CONTRACT ACCEPTED: ' + (p.title || '').toUpperCase());
-            if (mailTabActive()) renderMail();
         }
 
         function acceptItem(key, l) {
@@ -9574,52 +8639,6 @@
         function removeActiveContact() {
             if (!contactByUid(contactUidTarget)) return closeModals();
             forgetWastelander(contactUidTarget);
-        }
-
-        // --- CONTRACTS TAB (v0.44 item-11): every quest you've ISSUED, live status ---
-        // Data source is the existing outbox -- zero new storage, zero Firebase changes.
-        function renderContracts() {
-            const el = document.getElementById('contracts-list');
-            if (!el) return;
-            // v0.55: [+ ISSUE NEW QUEST] rides the contracts desk (Overseer-only)
-            const issueBtn = (localStorage.getItem('pipboy-dev-mode') === 'true')
-                ? '<button class="pip-btn" onclick="issueQuestStart()" style="width: 100%; border-style: dashed; margin-bottom: 10px;">[☢ + ISSUE NEW QUEST]</button>'
-                : '';
-            const given = outbox.filter(e => e.type === 'quest');
-            if (!given.length) {
-                el.innerHTML = issueBtn + '<p style="opacity:0.5;">NO CONTRACTS ISSUED. SEND A QUEST TO START ONE.</p>';
-                return;
-            }
-            el.innerHTML = issueBtn;
-            [...given].reverse().forEach(e => {
-                const c = contactByUid(e.to);
-                const terminal = (e.status === 'accepted' || e.status === 'declined' || e.status === 'fulfilled' || e.status === 'closed');
-                const clearable = terminal || e.status === 'queued';
-                const cancellable = (e.status === 'sent' || e.status === 'awaiting' || e.status === 'sending');
-                const row = document.createElement('div');
-                row.className = 'item-row';
-                row.style.cursor = 'default';
-                let actions = '';
-                if (cancellable) actions += '<button class="theme-btn" style="border-color:#ff3333; color:#ff3333;" onclick="cancelIssuedQuest(\'' + e.id + '\')">[CANCEL]</button>';
-                if (clearable) actions += '<button class="theme-btn" onclick="clearOutboxEntry(\'' + e.id + '\'); renderContracts();">[X]</button>';
-                row.innerHTML = '<div class="item-info"><div>' + escapeHtml(e.summary) + '</div><div class="item-effects">→ ' + escapeHtml(c ? c.name : e.to) + ' — ' + escapeHtml(statusLabel(e)) + ' — ' + timeOf(e.ts) + '</div></div>' + actions;
-                el.appendChild(row);
-            });
-        }
-
-        // v0.60: cancel an issued quest (withdraw from outbox + delete Firebase letter)
-        function cancelIssuedQuest(id) {
-            const e = outbox.find(x => x.id === id);
-            if (!e) return;
-            const c = contactByUid(e.to);
-            showCustomPrompt('CANCEL ISSUED QUEST "' + escapeHtml(e.summary) + '" TO ' + escapeHtml(c ? c.name : e.to) + '? THE RECIPIENT\'S COPY WILL BE DELETED.', [
-                { label: 'CANCEL QUEST', color: '#ff3333', action: () => {
-                    clearOutboxEntry(id);
-                    renderContracts();
-                    showNotification('QUEST CANCELLED.');
-                }},
-                { label: 'KEEP IT', color: 'var(--pip-color-dim)', action: () => {} }
-            ]);
         }
 
         // --- PHOTO MAIL (v0.44 items 1/2): two-way confirmed links only ---
@@ -10094,56 +9113,6 @@
             }
         }
 
-        function transmitQuest() {
-            const title = document.getElementById('cq-name').value.trim();
-            if (!title) return showNotification('A QUEST NEEDS A TITLE.');
-            const brief = document.getElementById('cq-brief').value.trim().toUpperCase();
-            const location = (document.getElementById('cq-loc').value.trim() || 'P2P LINK').toUpperCase();
-            const objectives = ['cq-obj1','cq-obj2','cq-obj3']
-                .map(id => document.getElementById(id).value.trim())
-                .filter(Boolean)
-                .map(s => s.toUpperCase());
-            if (!objectives.length) objectives.push('COMPLETION TERMS: SEE GIVER.');
-            const reward = document.getElementById('cq-reward').value.trim().toUpperCase();
-
-            // v0.34: expiration now accepts a clock time just like +ADD QUEST ("18:00" or "1800")
-            const timeInput = document.getElementById('cq-time').value.trim();
-            let expireTime = null, timeStr = '--:--';
-            if (timeInput) {
-                let h = NaN, m = NaN;
-                if (timeInput.includes(':')) {
-                    const parts = timeInput.split(':');
-                    h = parseInt(parts[0], 10); m = parseInt(parts[1], 10);
-                } else {
-                    const clean = timeInput.replace(/[^0-9]/g, '');
-                    if (clean.length >= 3) {
-                        h = parseInt(clean.substring(0, clean.length - 2), 10);
-                        m = parseInt(clean.substring(clean.length - 2), 10);
-                    }
-                }
-                if (!isNaN(h) && !isNaN(m) && h >= 0 && h < 24 && m >= 0 && m < 60) {
-                    const d = new Date();
-                    d.setHours(h, m, 0, 0);
-                    if (d < new Date()) d.setDate(d.getDate() + 1); // past today = tomorrow
-                    expireTime = d.getTime();
-                    timeStr = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-                } else {
-                    return showNotification('EXPIRATION MUST BE A 24H CLOCK TIME (e.g. 18:00) OR LEFT BLANK.');
-                }
-            }
-
-            const c = contactByUid(contactUidTarget);
-            // v0.48: no more silent deaths — this used to close the composer with zero
-            // feedback and read as "the contract never went out"
-            if (!c) { closeModals(); showNotification('TARGET LINK LOST -- RESELECT THEIR DATACARD OR BEACON.'); return; }
-            queueMail(c.uid, 'quest', { title: title.toUpperCase(), brief: brief, location: location, objectives: objectives, reward: reward, expireTime: expireTime, timeStr: timeStr }, 'QUEST: ' + title.toUpperCase());
-            closeModals();
-            // v0.48: breadcrumb — issued quests track on YOUR side under CONTRACTS
-            // (QUESTS is for quests YOU hold), which is exactly where people look first
-            showNotification('CONTRACT ISSUED — TRACK IT UNDER DATA > CONTRACTS.');
-            notifyTxResult();
-        }
-
         function openItemComposer(c) {
             document.getElementById('ci-title').innerText = 'ITEM TO: ' + c.name;
             ciSelectedItemId = null;
@@ -10254,9 +9223,6 @@
             buttons.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
             showCustomPrompt(kind === 'quest' ? 'ISSUE CONTRACT TO:' : 'SELECT RECIPIENT:', buttons);
         }
-
-        // v0.55: [+ ISSUE NEW QUEST] on DATA > CONTRACTS -- pick a wastelander, land in the composer
-        function issueQuestStart() { openRecipientPicker('quest'); }
 
         // v0.56: [SAVE PHOTO] on inbound transmissions -- files the shot into the CAM DATABANK
         function saveMailPhoto(dataUrl) {
