@@ -584,3 +584,29 @@ flag writes (claimed/declined/fulfilled on mail letters) pass these validators.
 4. Added dependency-free `tests/planner-regression.js` covering date keys, 48 rows, overlaps/lanes, edit/create/delete, client gate, rule structure, listener error, and form validation. These are mocked/static tests, not live browser or multi-device Firebase verification.
 
 **Release:** Three visible version labels v0.305, service worker cache `pipboy-cache-v287`, ZIP `Pox-Boy-3026-v0.305.zip`. No Firebase rule publishing, live hosting upload, or database records created by the agent. Preserve existing audio/favicons on the live site. After rules + site deployment, verify Overseer add/edit/delete and read-only synced views on production-authorized devices.
+
+### v0.306 — NUKA PLANNER WIRE reminders and stacked announcements
+
+**Release package:** `Pox-Boy-3026-v0.306.zip`. This release adds a server-only Firebase Functions v2 scheduler in the ZIP's `functions/`, Firebase CLI `firebase.json` at root, and revised `pwa/firebase-rules.json`. It is not a live deployment; no project credentials or publishing session were available. See `pwa/README.md` for precise ordering and verification.
+
+- START/END selection enforces >=30 minutes in picker and validation; changing START past END advances END automatically. START latest 23:30, END latest 24:00. BROADCAST YES/NO per event defaults NO; old records without flag behave NO.
+- Scheduled function fires every minute against fixed 2026 Perth timestamps, including previous-day due times for midnight events. It atomically claims a deterministic feed ID, rechecks the live event before sending, writes the WIRE feed and mirrors the latest for legacy clients. Cancels/edits after a sent reminder do not retract it. Events created or changed after due are not immediately alerted.
+- Manual WIRE writes feed + latest in one RTDB multi-location update. New clients subscribe to the latest 100 feed items ordered by `ts`, also watch legacy latest, deduplicate by ID, show a bounded 12-hour independently dismissible stack, and suppress initial-sync native pings. No Web Push or background notifications; alerts only while PWA is running. Existing public RTDB write security limitation remains, as documented in README.
+- Upgrade cache to `pipboy-cache-v288`, visible version to v0.306. Offline suites: `pwa/tests/planner-regression.js`, `pwa/tests/wire-regression.js`, `functions/test-planner-reminders.js`, existing quest and mail/photo suites. Server code must never be uploaded to static hosting.
+
+### v0.307 — Three-day single-board hourly NUKA PLANNER
+
+**Release:** `Pox-Boy-3026-v0.307.zip`; visible labels v0.307, cache `pipboy-cache-v289`. **Prepared only; not live-published.** See `pwa/README.md` for deployment order and security/compatibility warnings.
+
+- Replace four-day half-hour grid/day tabs with one two-column 42-row board: Thursday 22 through Saturday 24 October 2226, 14 one-hour slots per day from 10:00–11:00 through 23:00–24:00, vertically expanding rows for multiple concurrent events. Real schedule date keys remain 2026 Perth.
+- Editor now selects a day + exactly one slot, stores derived `endMinute = startMinute + 60`, chooses a live `officialFactions` clan or None or Wastelander-run, and accepts optional free-text Area (existing `location`). The saved faction ID and fallback name survive faction deletion; live rename displays current name. Optional 15-minute WIRE broadcast and stacked WIRE unchanged.
+- Earlier-format records (including Sunday) remain untouched and viewable from a previous-format archive; no auto-conversion or deletion. Matching existing one-hour records remain on the board. Read-only archived details have an Overseer-confirmed delete path. Revised rules accept new hour/host schema on Thu/Fri/Sat, but existing off-grid and Sunday records still read; their editing is intentionally disabled. Update the existing Firebase scheduled function to the same three-day hourly scope; off-grid records no longer send reminders.
+- UI edit gate/public RTDB writes remain the known prior security limitation. Publish site/rules/function in a maintenance window; install updates on devices. Offline tests: planner, wire, server scheduler, quest and mail/photo.
+
+### v0.308 — client-side scheduled NUKA PLANNER WIRE; no Firebase Functions deployment
+
+**Release:** `Pox-Boy-3026-v0.308.zip`. Prepared only; no live hosting upload or rule publication performed. Version labels v0.308, service worker cache `pipboy-cache-v290`. **This release supersedes v0.306/v0.307 instructions to install and deploy a `functions/` folder; the v0.308 ZIP contains only `pwa/`.** Upload PWA contents to GitHub web root and paste `pwa/firebase-rules.json` into the correct Firebase RTDB Rules as usual.
+
+Each running/online client listens to planner records and `/.info/serverTimeOffset` plus `/.info/connected`, checks every 20 seconds and on updates/foreground return, and attempts event reminders during the 15-minute pre-start window. A deterministic `announcements/feed/planner_<2026-day>_<event-id>` transaction is the once-only cross-client claim; client rules permit its create-only `kind:event` write when planner broadcast is true, and the client mirrors to legacy `announcements/latest` for older apps. Manual WIRE writing continues through its existing feed/latest flow. Scheduled announcements are best-effort; no running online app means none sent, and app-closed Web Push is not added. If an old Cloud Function was ever deployed, disable it separately. Public RTDB writes/UI-only Overseer security limitation remains.
+
+Regression suite: `pwa/tests/planner-regression.js`, `pwa/tests/planner-client-reminders.js`, `pwa/tests/wire-regression.js`, plus existing quest and mail/photo suites. No production data migration or deletion.

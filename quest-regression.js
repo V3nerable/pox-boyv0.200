@@ -1,4 +1,4 @@
-// v0.302 focused offline regression checks. Run: node tests/quest-regression.js
+// v0.303 focused offline regression checks. Run: node tests/quest-regression.js
 // No Firebase connection or real user data is used.
 const fs = require('fs');
 const vm = require('vm');
@@ -88,6 +88,47 @@ async function run() {
   assert.equal(evImg.src,'data:image/jpeg;base64,second');
   cEv.closeEvidencePhoto();assert(evPrompts[3].text.includes('Second'));
   assert.equal(evNotes.length,0);
+  // A fresh registration must finish with no old `factions` global. The official
+  // faction listener can arrive later without losing origin/perk starting rep.
+  for (const origin of ['vault','warboy','scavenger']) {
+    const store={};const overlay={style:{display:'flex'}};let painted=0;
+    const cOb=context({localStorage:{getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=v}},
+      userProfile:{special:{S:1,P:1,E:1,C:1,I:1,A:1,L:1},isInitiated:false,maxHp:100},
+      items:[],waypoints:[],obOriginId:origin,obTraitId:'guzzoline',selectedPerkId:'ayatollah',
+      obOrigins:[{id:'vault',name:'Vault'},{id:'warboy',name:'War Boy'},{id:'scavenger',name:'Drifter'}],
+      obTraits:[{id:'guzzoline',name:'Addict'}],availablePerks:[{id:'ayatollah',name:'Legend'}],
+      calculateSkills:()=>{},showNotification:()=>{},logChronicleEvent:()=>{},myMailUid:'new-user',
+      document:{getElementById:id=>id==='onboarding-overlay'?overlay:null},renderProfile:()=>{painted++}});
+    vm.runInContext(section('let officialFactions = [];', '// Initialize Firebase listener for official factions'),cOb);
+    vm.runInContext(section('function saveToStorage()', '// ==================== FUN / WILD STATS'),cOb);
+    vm.runInContext(section('function finishOnboarding()', 'function calculateSkills()'),cOb);
+    cOb.finishOnboarding();
+    assert.equal(painted,1);assert.equal(overlay.style.display,'none');
+    assert.equal(JSON.parse(store['pipboy-user']).isInitiated,true);
+    assert.equal(JSON.parse(store['pipboy-user']).maxHp,80);
+    assert(!('pipboy-factions' in store));
+    vm.runInContext(`officialFactions = [
+      {id:'v',name:'VAULT-TEC SURVIVORS',startingRep:5},
+      {id:'w',name:'THE WAR BOYS',startingRep:5},
+      {id:'s',name:'SCAVENGERS GUILD',startingRep:5}
+    ]`,cOb);
+    const boosted={vault:'v',warboy:'w',scavenger:'s'}[origin];
+    for (const id of ['v','w','s']) assert.equal(cOb.getFactionRep(id),id===boosted?45:25);
+    cOb.setFactionRep(boosted,0);
+    assert.equal(cOb.getFactionRep(boosted),0); // explicit zero must not reapply bonuses
+    cOb.saveToStorage();
+    assert.equal(JSON.parse(store['pipboy-user']).origin.id,origin);
+  }
+  // Fast boot calls the same storage writer and must not depend on a retired array.
+  {
+    const store={};const cDev=context({localStorage:{getItem:()=>null,setItem:(k,v)=>{store[k]=v}},
+      userProfile:{special:{},isInitiated:false},items:[],waypoints:[],
+      obOrigins:[{id:'vault'}],obTraits:[{id:'guzzoline'}],availablePerks:[{id:'witness'}],
+      calculateSkills:()=>{},renderProfile:()=>{},document:{getElementById:()=>({style:{}})}});
+    vm.runInContext(section('function saveToStorage()', '// ==================== FUN / WILD STATS'),cDev);
+    vm.runInContext(section('function devSkipToApp()', 'function runBootSequence()'),cDev);
+    cDev.devSkipToApp();assert.equal(JSON.parse(store['pipboy-user']).isInitiated,true);
+  }
   // Dismiss in verification request must only mark read; only explicit DELETE retires.
   const mailBlock=section("} else if (l.type === 'verify-request')", "} else if (l.type === 'item')");
   const dismissActions=[...mailBlock.matchAll(/label: 'DISMISS', action: \(\) => \{([\s\S]*?)\}\}/g)];
@@ -194,6 +235,6 @@ async function run() {
   prompts[0].buttons[0].action();assert.equal(prompts.length,2);assert.equal(purgeCalls.length,0);
   prompts[1].buttons[0].action();await new Promise(r=>setImmediate(r));
   assert.deepEqual(purgeCalls.sort(),['bounties/b','globalContracts/gc','quests/old']);
-  console.log('PASS: evidence photo viewer, stage SAVE validation/return, quest creation, direct acceptance/visibility, stage IDs/editing, UID matching, reject retry, DISMISS, advisory timers, deliberate legacy purge');
+  console.log('PASS: fresh registration/faction reputation, evidence photo viewer, stage SAVE validation/return, quest creation, direct acceptance/visibility, stage IDs/editing, UID matching, reject retry, DISMISS, advisory timers, deliberate legacy purge');
 }
 run().catch(err=>{console.error(err);process.exitCode=1});

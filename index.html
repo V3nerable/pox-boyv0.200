@@ -27,7 +27,7 @@
     <!-- Firebase SDK (Live Tracking) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, set, get, remove, onValue, onDisconnect, push, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { getDatabase, ref, set, get, remove, onValue, onDisconnect, push, update, query, orderByChild, limitToLast, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD5Uczvj78XsIsykhlasSYaMcPBO2WNvxs",
@@ -49,6 +49,10 @@
         window.firebaseRemove = remove;
         window.firebasePush = push;
         window.firebaseUpdate = update;
+        window.firebaseRunTransaction = runTransaction;
+        window.firebaseQuery = query;
+        window.firebaseOrderByChild = orderByChild;
+        window.firebaseLimitToLast = limitToLast;
     </script>
 </head>
 <body class="crt">
@@ -57,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.305</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.308</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -73,7 +77,7 @@
 
     <!-- MAIN NAVIGATION -->
     <!-- v0.56: Overseer wire banner -- persists under the header until dismissed -->
-    <div id="wire-banner" onclick="dismissWire()" style="display: none; position: relative; border: 2px dashed #ffb642; color: #ffb642; text-shadow: 0 0 6px #ffb642; padding: 8px 34px 8px 10px; margin: 4px 10px; font-size: 0.95rem; cursor: pointer; background: rgba(20, 12, 0, 0.6);">📣 <span id="wire-banner-text"></span><span style="position: absolute; right: 10px; top: 7px; opacity: 0.75;">[X]</span></div>
+    <div id="wire-stack" aria-label="Overseer announcements" role="region" style="display:none;"></div>
 
     <div class="nav-tabs">
         <div class="nav-item active" onclick="switchMainTab('stat')">STAT</div>
@@ -291,17 +295,18 @@
                 </div>
             </div>
 
-            <!-- NUKA PLANNER: 22–25 OCT 2226 (real dates 2026, Perth time) -->
+            <!-- NUKA PLANNER: 22–24 OCT 2226 (real dates 2026, Perth time) -->
             <div id="sub-data-planner" class="sub-tab-content">
                 <div class="planner-header">
                     <div>
                         <h3>☢ NUKA PLANNER</h3>
-                        <p>22–25 OCTOBER 2226 · ALL TIMES AWST (UTC+8) · HALF-HOURLY</p>
+                        <p>22–24 OCTOBER 2226 · THU/FRI/SAT · 10:00–24:00 AWST · ONE-HOUR SLOTS</p>
                     </div>
                     <button class="pip-btn" id="planner-add-btn" onclick="openPlannerEditor()" style="display:none;">[+ EVENT]</button>
                 </div>
-                <div class="sub-nav planner-days" id="planner-day-nav" aria-label="Planner days"></div>
+
                 <div id="planner-status" role="status" style="opacity:0.7; margin:8px 0;">CONNECTING TO EVENT SCHEDULE...</div>
+                <button class="pip-btn" id="planner-archive-btn" onclick="viewPlannerArchive()" style="display:none; margin-bottom:8px;">[PREVIOUS-FORMAT EVENTS]</button>
                 <div id="planner-grid-wrap" class="planner-grid-wrap"><div id="planner-grid" class="planner-grid"></div></div>
             </div>
 
@@ -588,14 +593,13 @@
     <div id="planner-editor-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height:90vh; overflow-y:auto;">
             <h3 id="planner-editor-heading">ADD EVENT</h3>
-            <p style="opacity:0.75;">FOUR-DAY SCHEDULE · AUSTRALIA/PERTH · IN-WORLD YEAR 2226</p>
+            <p style="opacity:0.75;">THU–SAT · ONE-HOUR SLOTS · AUSTRALIA/PERTH · YEAR 2226</p>
             <div class="form-group"><label>DAY</label><button class="pip-btn" id="planner-edit-day" onclick="choosePlannerDay()" style="width:100%;">SELECT DAY</button></div>
             <div class="form-group"><label>TITLE</label><input id="planner-edit-title" class="pip-input vk-target" readonly onclick="openVk('planner-edit-title')" maxlength="100" placeholder="EVENT TITLE"></div>
-            <div class="planner-time-buttons">
-                <div class="form-group"><label>START</label><button class="pip-btn" id="planner-edit-start" onclick="choosePlannerTime('start')">SELECT START</button></div>
-                <div class="form-group"><label>END</label><button class="pip-btn" id="planner-edit-end" onclick="choosePlannerTime('end')">SELECT END</button></div>
-            </div>
-            <div class="form-group"><label>LOCATION (OPTIONAL)</label><input id="planner-edit-location" class="pip-input vk-target" readonly onclick="openVk('planner-edit-location')" maxlength="100" placeholder="MEETING POINT"></div>
+            <div class="form-group"><label>ONE-HOUR TIMESLOT (AWST)</label><button class="pip-btn" id="planner-edit-slot" onclick="choosePlannerSlot()" style="width:100%;">SELECT SLOT</button></div>
+            <div class="form-group"><label>HOSTING CLAN</label><button class="pip-btn" id="planner-edit-host" onclick="choosePlannerHost()" style="width:100%;">HOST: NONE</button></div>
+            <div class="form-group"><label>15-MINUTE OVERSEER WIRE REMINDER</label><button class="pip-btn" id="planner-edit-broadcast" onclick="togglePlannerBroadcast()" style="width:100%;">BROADCAST: NO</button><small>Best effort while any unit has the app running online. No closed-app push.</small></div>
+            <div class="form-group"><label>AREA (OPTIONAL)</label><input id="planner-edit-location" class="pip-input vk-target" readonly onclick="openVk('planner-edit-location')" maxlength="100" placeholder="MEETING POINT"></div>
             <div class="form-group"><label>DETAILS (OPTIONAL)</label><textarea id="planner-edit-description" class="pip-input vk-target grow" readonly onclick="openVk('planner-edit-description')" maxlength="500" rows="3" placeholder="EVENT DETAILS"></textarea></div>
             <div id="planner-editor-error" role="alert" aria-live="assertive" style="display:none; color:#ff6b6b; border:1px solid #ff3333; padding:10px; margin-bottom:10px;"></div>
             <button class="pip-btn" id="planner-save-btn" onclick="savePlannerEvent()">SAVE EVENT</button>
@@ -987,7 +991,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.305</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.308</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1018,7 +1022,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.305</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.308</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>

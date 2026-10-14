@@ -243,6 +243,7 @@
                 if (document.getElementById('tab-data')?.classList.contains('active') && currentDataTab === 'factions') {
                     renderFactions();
                 }
+                if (currentDataTab === 'planner' && document.getElementById('tab-data')?.classList.contains('active')) renderNukaPlanner();
             }, (error) => {
                 console.error('[Factions] Error listening to official factions:', error);
             });
@@ -1414,22 +1415,117 @@
             }
         }
 
-        // ================= v0.305 NUKA PLANNER =================
+        // ================= v0.308 NUKA PLANNER =================
         // Display year 2226; real schedule keys are 2026 dates in Australia/Perth.
         // Never construct a Date in year 2226 for event logic.
         const plannerDays = [
             { key: '2026-10-22', label: 'THU 22/10/2226' },
             { key: '2026-10-23', label: 'FRI 23/10/2226' },
-            { key: '2026-10-24', label: 'SAT 24/10/2226' },
-            { key: '2026-10-25', label: 'SUN 25/10/2226' }
+            { key: '2026-10-24', label: 'SAT 24/10/2226' }
         ];
-        let plannerDay = plannerDays.find(d => d.key === plannerPerthNow().day)?.key || plannerDays[0].key;
+        const plannerDefaultDay = plannerDays.find(d => d.key === plannerPerthNow().day)?.key || plannerDays[0].key;
         let plannerEvents = {};
         let plannerLoaded = false;
         let plannerListenError = '';
         let plannerListenerStarted = false;
         let plannerDraft = null;
         let plannerSaving = false;
+        let plannerReminderStarted = false;
+        let plannerReminderOnline = false;
+        let plannerReminderOffset = null;
+        const plannerReminderPending = new Set();
+        const plannerReminderDone = new Set();
+
+        function plannerReminderStartMs(day, minute) {
+            if (!plannerDays.some(d => d.key === day) || !plannerSlots.includes(minute)) return NaN;
+            return Date.parse(day + 'T00:00:00+08:00') + minute * 60000;
+        }
+        function plannerReminderKey(day, id) {
+            return 'planner_' + day + '_' + id;
+        }
+        function plannerReminderEligible(day, event, serverNow) {
+            if (!plannerOnBoard(day, event) || event.broadcast !== true) return false;
+            const start = plannerReminderStartMs(day, event.startMinute);
+            const due = start - 15 * 60000;
+            return serverNow >= due && serverNow < start &&
+                Number.isFinite(event.createdAt) && event.createdAt <= due &&
+                (!Number.isFinite(event.updatedAt) || event.updatedAt <= due);
+        }
+        async function publishPlannerReminder(day, id) {
+            const key = plannerReminderKey(day, id);
+            if (plannerReminderPending.has(key) || plannerReminderDone.has(key)) return;
+            const event = plannerEvents[day]?.[id];
+            if (!event || plannerReminderOffset === null || !plannerReminderOnline ||
+                !plannerReminderEligible(day, event, Date.now() + plannerReminderOffset)) return;
+            plannerReminderPending.add(key);
+            try {
+                // A deterministic feed key is the shared claim: only one open client wins.
+                // The transaction's returned snapshot also lets a loser repair latest if
+                // the winning client closed between writing feed and mirroring latest.
+                const serverNow = Date.now() + plannerReminderOffset;
+                const title = String(event.title).replace(/[\r\n]+/g, ' ').trim().slice(0, 75);
+                if (!title) return;
+                const msg = { id: key,
+                    text: (`EVENT IN 15 MIN: ${title} · ${day.slice(8)}/10/2226 ` +
+                        plannerClock(event.startMinute) + ' AWST').slice(0, 140),
+                    from: 'OVERSEER', ts: serverNow, kind: 'event', day, eventId: id };
+                const feed = window.firebaseRef(window.db, 'announcements/feed/' + key);
+                let published;
+                try {
+                    const result = await window.firebaseRunTransaction(feed,
+                        current => current === null ? msg : undefined, { applyLocally: false });
+                    published = result.snapshot.val();
+                } catch (error) {
+                    // Losing a cross-device race can hit the create-only write rule.
+                    // Read the winner's entry so we can still repair the legacy mirror.
+                    const existing = await window.firebaseGet(feed);
+                    published = existing.val();
+                    if (!published || published.id !== key || published.kind !== 'event') throw error;
+                }
+                if (!published || published.id !== key || published.kind !== 'event') return;
+                // Old installed PWA versions still listen to the one-slot latest path.
+                const legacy = { id: published.id, text: published.text, from: published.from,
+                    ts: published.ts, kind: 'manual' };
+                await window.firebaseRunTransaction(window.firebaseRef(window.db, 'announcements/latest'),
+                    current => !current || current.ts < legacy.ts ? legacy : undefined,
+                    { applyLocally: false });
+                plannerReminderDone.add(key);
+            } catch (error) {
+                console.warn('[NukaPlanner] Client WIRE reminder could not be published:', error);
+                // May be a transient disconnection; retry while the event has not begun.
+            } finally {
+                plannerReminderPending.delete(key);
+            }
+        }
+        function checkPlannerReminders() {
+            if (!plannerLoaded || !plannerReminderOnline || plannerReminderOffset === null ||
+                !window.db || !window.firebaseRunTransaction) return;
+            const now = Date.now() + plannerReminderOffset;
+            plannerDays.forEach(d => {
+                Object.entries(plannerEvents[d.key] || {}).forEach(([id, event]) => {
+                    if (plannerReminderEligible(d.key, event, now) && /^[-A-Za-z0-9_]{1,100}$/.test(id))
+                        publishPlannerReminder(d.key, id);
+                });
+            });
+        }
+        function startPlannerClientReminders() {
+            if (!window.db || plannerReminderStarted) return;
+            plannerReminderStarted = true;
+            window.firebaseOnValue(window.firebaseRef(window.db, '.info/serverTimeOffset'), snap => {
+                const offset = snap.val();
+                plannerReminderOffset = typeof offset === 'number' ? offset : null;
+                checkPlannerReminders();
+            }, () => { plannerReminderOffset = null; });
+            window.firebaseOnValue(window.firebaseRef(window.db, '.info/connected'), snap => {
+                plannerReminderOnline = snap.val() === true;
+                if (plannerReminderOnline) checkPlannerReminders();
+            }, () => { plannerReminderOnline = false; });
+            setInterval(checkPlannerReminders, 20000);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) checkPlannerReminders();
+            });
+            window.addEventListener('focus', checkPlannerReminders);
+        }
 
         function plannerIsOverseer() {
             // Same client-side Overseer gate as the rest of the app; NOT server auth.
@@ -1465,6 +1561,7 @@
                 plannerLoaded = true;
                 plannerListenError = '';
                 if (plannerPaneActive()) renderNukaPlanner();
+                checkPlannerReminders();
             }, error => {
                 plannerListenerStarted = false;
                 plannerListenError = 'PLANNER LINK FAILED — CHECK FIREBASE RULES / SIGNAL.';
@@ -1473,103 +1570,120 @@
             });
         }
 
-        function plannerEventsForDay(day) {
-            const data = plannerEvents[day] || {};
-            return Object.entries(data).filter(([, event]) => event && typeof event === 'object')
+        const plannerSlots = Array.from({ length: 14 }, (_, i) => 600 + i * 60);
+        function plannerOnBoard(day, event) {
+            return plannerDays.some(d => d.key === day) && event &&
+                typeof event.title === 'string' && Number.isInteger(event.startMinute) &&
+                plannerSlots.includes(event.startMinute) && event.endMinute === event.startMinute + 60;
+        }
+        function plannerEventsForSlot(day, minute) {
+            return Object.entries(plannerEvents[day] || {})
+                .filter(([, event]) => plannerOnBoard(day, event) && event.startMinute === minute)
                 .map(([id, event]) => ({ ...event, id }))
-                .filter(event => typeof event.title === 'string' &&
-                    Number.isInteger(event.startMinute) && Number.isInteger(event.endMinute) &&
-                    event.startMinute >= 0 && event.startMinute < event.endMinute &&
-                    event.endMinute <= 1440 && event.startMinute % 30 === 0 && event.endMinute % 30 === 0)
-                .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute || a.id.localeCompare(b.id));
+                .sort((a, b) => (a.title || '').localeCompare(b.title || '') || a.id.localeCompare(b.id));
         }
-
-        function selectPlannerDay(day) {
-            if (!plannerDays.some(d => d.key === day)) return;
-            plannerDay = day;
-            renderNukaPlanner();
-            const wrap = document.getElementById('planner-grid-wrap');
-            if (wrap) wrap.scrollTop = 0;
+        function plannerArchive() {
+            return Object.entries(plannerEvents).flatMap(([day, events]) =>
+                Object.entries(events || {}).filter(([, event]) => event && typeof event === 'object' &&
+                    !plannerOnBoard(day, event)).map(([id, event]) => ({ day, id, event })));
         }
-
+        function plannerHostName(event) {
+            if (event.hostType === 'wastelander') return 'WASTELANDER-RUN';
+            if (event.hostType === 'faction') {
+                const live = officialFactions.find(f => f.id === event.hostFactionId);
+                return live?.name || event.hostFactionName || 'FORMER CLAN';
+            }
+            return 'NONE';
+        }
         function renderNukaPlanner() {
-            const nav = document.getElementById('planner-day-nav');
-            const grid = document.getElementById('planner-grid');
+            const board = document.getElementById('planner-grid');
             const status = document.getElementById('planner-status');
-            if (!nav || !grid || !status) return;
-            nav.replaceChildren();
-            plannerDays.forEach(d => {
-                const btn = document.createElement('button');
-                btn.className = 'sub-nav-item' + (d.key === plannerDay ? ' active' : '');
-                btn.type = 'button';
-                btn.textContent = d.label;
-                btn.onclick = () => selectPlannerDay(d.key);
-                nav.appendChild(btn);
-            });
+            if (!board || !status) return;
             const add = document.getElementById('planner-add-btn');
             if (add) add.style.display = plannerIsOverseer() ? 'inline-block' : 'none';
-            const events = plannerEventsForDay(plannerDay);
-            status.textContent = plannerListenError || (!plannerLoaded ? 'CONNECTING TO EVENT SCHEDULE...'
-                : events.length + ' EVENT' + (events.length === 1 ? '' : 'S') + ' · ' +
-                  (events.length ? 'TAP AN EVENT FOR DETAILS' : 'NO EVENTS SCHEDULED'));
-
-            // Interval partitioning: overlapping blocks get their own side-by-side
-            // lanes; sequential blocks reuse lanes. Rows remain exact half-hours.
-            const laneEnds = [];
-            const assigned = events.map(event => {
-                let lane = laneEnds.findIndex(end => end <= event.startMinute);
-                if (lane < 0) lane = laneEnds.length;
-                laneEnds[lane] = event.endMinute;
-                return { event, lane };
-            });
-            const lanes = Math.max(1, laneEnds.length);
-            grid.replaceChildren();
-            grid.style.gridTemplateColumns = `62px repeat(${lanes}, minmax(160px, 1fr))`;
-            grid.style.gridTemplateRows = 'repeat(48, 56px)';
-            const now = plannerPerthNow();
-            for (let slot = 0; slot < 48; slot++) {
-                const line = document.createElement('div');
-                line.className = 'planner-slot' + (now.day === plannerDay && Math.floor(now.minute / 30) === slot ? ' planner-now' : '');
-                line.style.gridRow = String(slot + 1);
-                line.style.gridColumn = '1 / -1';
-                grid.appendChild(line);
-                const time = document.createElement('div');
-                time.className = 'planner-time';
-                time.style.gridRow = String(slot + 1);
-                time.style.gridColumn = '1';
-                time.textContent = plannerClock(slot * 30);
-                grid.appendChild(time);
+            const archive = plannerArchive();
+            const archiveButton = document.getElementById('planner-archive-btn');
+            if (archiveButton) {
+                archiveButton.style.display = archive.length ? 'inline-block' : 'none';
+                archiveButton.textContent = `[${archive.length} PREVIOUS-FORMAT EVENT${archive.length === 1 ? '' : 'S'}]`;
             }
-            assigned.forEach(({ event, lane }) => {
-                const card = document.createElement('div');
-                card.className = 'planner-event';
-                card.tabIndex = 0;
-                card.setAttribute('role', 'button');
-                card.style.gridColumn = String(lane + 2);
-                card.style.gridRow = `${event.startMinute / 30 + 1} / span ${(event.endMinute - event.startMinute) / 30}`;
-                const heading = document.createElement('strong');
-                heading.textContent = event.title;
-                const time = document.createElement('small');
-                time.textContent = `${plannerClock(event.startMinute)}–${plannerClock(event.endMinute)} AWST`;
-                card.append(heading, time);
-                card.onclick = () => openPlannerEventDetails(plannerDay, event.id);
-                card.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click(); } };
-                grid.appendChild(card);
+            let count = 0;
+            board.replaceChildren();
+            const columns = document.createElement('div');
+            columns.className = 'planner-board-columns';
+            const slotHeading = document.createElement('span'); slotHeading.textContent = 'DAY / SLOT';
+            const eventHeading = document.createElement('span'); eventHeading.textContent = 'EVENT · HOST / AREA';
+            columns.append(slotHeading, eventHeading); board.appendChild(columns);
+            plannerDays.forEach(day => {
+                const header = document.createElement('div');
+                header.className = 'planner-board-day';
+                header.textContent = day.label;
+                board.appendChild(header);
+                plannerSlots.forEach(minute => {
+                    const row = document.createElement('div');
+                    row.className = 'planner-board-row';
+                    const time = document.createElement('div');
+                    time.className = 'planner-board-time';
+                    time.textContent = `${plannerClock(minute)}–${plannerClock(minute + 60)}`;
+                    const cell = document.createElement('div');
+                    cell.className = 'planner-board-events';
+                    const events = plannerEventsForSlot(day.key, minute);
+                    count += events.length;
+                    events.forEach(event => {
+                        const card = document.createElement('button');
+                        card.type = 'button'; card.className = 'planner-board-event';
+                        const title = document.createElement('strong'); title.textContent = event.title;
+                        const host = document.createElement('small');
+                        host.textContent = 'HOST: ' + plannerHostName(event) +
+                            (event.location ? ' · AREA: ' + event.location : ' · AREA: NOT SET');
+                        card.append(title, host);
+                        card.onclick = () => openPlannerEventDetails(day.key, event.id);
+                        cell.appendChild(card);
+                    });
+                    if (!events.length) {
+                        const empty = document.createElement('span'); empty.className = 'planner-board-empty';
+                        empty.textContent = '—'; cell.appendChild(empty);
+                    }
+                    if (plannerIsOverseer()) {
+                        const quick = document.createElement('button');
+                        quick.type = 'button'; quick.className = 'planner-board-add';
+                        quick.textContent = '[+ EVENT]';
+                        quick.onclick = () => openPlannerEditor(day.key, null, minute);
+                        cell.appendChild(quick);
+                    }
+                    row.append(time, cell); board.appendChild(row);
+                });
             });
+            status.textContent = plannerListenError || (!plannerLoaded ? 'CONNECTING TO EVENT SCHEDULE...'
+                : `${count} EVENT${count === 1 ? '' : 'S'} · THU–SAT · 10:00–24:00 AWST` +
+                  (archive.length ? ` · ${archive.length} PREVIOUS-FORMAT EVENT${archive.length === 1 ? '' : 'S'} RETAINED` : ''));
+        }
+
+        function viewPlannerArchive() {
+            const archive = plannerArchive();
+            if (!archive.length) { showNotification('NO PREVIOUS-FORMAT EVENTS.'); return; }
+            showCustomPrompt('PREVIOUS-FORMAT EVENTS · PRESERVED OUTSIDE THE NEW BOARD',
+                archive.map(({ day, id, event }) => ({
+                    label: `${day} ${plannerClock(event.startMinute)} ${String(event.title || 'UNTITLED').slice(0, 50)}`,
+                    action: () => openPlannerEventDetails(day, id)
+                })));
         }
 
         function openPlannerEventDetails(day, id) {
-            if (!plannerDays.some(d => d.key === day)) return;
             const event = plannerEvents[day]?.[id];
             if (!event) { showNotification('EVENT NO LONGER AVAILABLE.'); return; }
-            const date = plannerDays.find(d => d.key === day).label;
+            const date = plannerDays.find(d => d.key === day)?.label || (day + ' (PREVIOUS FORMAT)');
             let text = `${event.title}\n${date} · ${plannerClock(event.startMinute)}–${plannerClock(event.endMinute)} AWST`;
-            if (event.location) text += '\nLOCATION: ' + event.location;
+            text += '\nHOST: ' + plannerHostName(event);
+            if (event.location) text += '\nAREA: ' + event.location;
             if (event.description) text += '\n\n' + event.description;
+            if (plannerIsOverseer()) text += '\nBROADCAST: ' + (event.broadcast === true ? 'YES' : 'NO');
             const buttons = [];
             if (plannerIsOverseer()) {
-                buttons.push({ label: 'EDIT EVENT', action: () => openPlannerEditor(day, id) });
-                buttons.push({ label: 'DELETE EVENT', color: '#ff3333', action: () => confirmDeletePlannerEvent(day, id) });
+                if (plannerOnBoard(day, event))
+                    buttons.push({ label: 'EDIT EVENT', action: () => openPlannerEditor(day, id) });
+                if (plannerDays.some(d => d.key === day) || day === '2026-10-25')
+                    buttons.push({ label: 'DELETE EVENT', color: '#ff3333', action: () => confirmDeletePlannerEvent(day, id) });
             }
             buttons.push({ label: 'CLOSE', action: () => {} });
             showCustomPrompt(text, buttons);
@@ -1585,17 +1699,22 @@
             document.getElementById('planner-edit-day').textContent =
                 plannerDays.find(d => d.key === plannerDraft.day)?.label || 'SELECT DAY';
             document.getElementById('planner-edit-day').disabled = !!plannerDraft.id;
-            document.getElementById('planner-edit-start').textContent = 'START: ' + plannerClock(plannerDraft.startMinute);
-            document.getElementById('planner-edit-end').textContent = 'END: ' + plannerClock(plannerDraft.endMinute);
+            document.getElementById('planner-edit-slot').textContent =
+                'SLOT: ' + plannerClock(plannerDraft.startMinute) + '–' + plannerClock(plannerDraft.startMinute + 60);
+            document.getElementById('planner-edit-host').textContent =
+                'HOST: ' + plannerHostName(plannerDraft);
+            document.getElementById('planner-edit-broadcast').textContent =
+                'BROADCAST: ' + (plannerDraft.broadcast ? 'YES' : 'NO');
         }
 
-        function openPlannerEditor(day = plannerDay, id = null) {
+        function openPlannerEditor(day = plannerDefaultDay, id = null, minute = 600) {
             if (!plannerIsOverseer()) { showNotification('OVERSEER ACCESS REQUIRED.'); return; }
             if (!plannerDays.some(d => d.key === day)) return;
             const event = id ? plannerEvents[day]?.[id] : null;
-            if (id && !event) { showNotification('EVENT NO LONGER AVAILABLE.'); return; }
-            plannerDraft = { day, id, startMinute: event?.startMinute ?? 540,
-                endMinute: event?.endMinute ?? 600 };
+            if (id && !plannerOnBoard(day, event)) { showNotification('EVENT IS IN PREVIOUS-FORMAT ARCHIVE.'); return; }
+            plannerDraft = { day, id, startMinute: event?.startMinute ?? minute,
+                hostType: event?.hostType || 'none', hostFactionId: event?.hostFactionId || '',
+                hostFactionName: event?.hostFactionName || '', broadcast: event?.broadcast === true };
             document.getElementById('planner-editor-heading').textContent = id ? 'EDIT EVENT' : 'ADD EVENT';
             document.getElementById('planner-edit-title').value = event?.title || '';
             document.getElementById('planner-edit-location').value = event?.location || '';
@@ -1610,7 +1729,7 @@
         }
 
         function closePlannerEditor() {
-            if (plannerSaving) return; // don't dismiss until Firebase confirms the save
+            if (plannerSaving) return;
             plannerDraft = null;
             document.getElementById('planner-editor-modal').style.display = 'none';
         }
@@ -1622,24 +1741,43 @@
             })));
         }
 
-        function choosePlannerTime(which) {
-            if (!plannerDraft || !['start', 'end'].includes(which)) return;
-            const hours = Array.from({ length: 24 }, (_, hour) => ({
-                label: String(hour).padStart(2, '0') + ':00 / :30',
-                action: () => showCustomPrompt('SELECT ' + which.toUpperCase() + ' MINUTES', [
-                    { label: String(hour).padStart(2, '0') + ':00', action: () => {
-                        plannerDraft[which + 'Minute'] = hour * 60; updatePlannerEditorLabels();
-                    }},
-                    { label: String(hour).padStart(2, '0') + ':30', action: () => {
-                        plannerDraft[which + 'Minute'] = hour * 60 + 30; updatePlannerEditorLabels();
-                    }}
-                ])
-            }));
-            if (which === 'end') hours.push({ label: '24:00 — END OF DAY', action: () => {
-                plannerDraft.endMinute = 1440; updatePlannerEditorLabels();
-            }});
-            hours.push({ label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} });
-            showCustomPrompt('SELECT ' + which.toUpperCase() + ' HOUR (AWST)', hours);
+        function choosePlannerSlot() {
+            if (!plannerDraft) return;
+            showCustomPrompt('SELECT ONE-HOUR SLOT (AWST)', plannerSlots.map(minute => ({
+                label: plannerClock(minute) + '–' + plannerClock(minute + 60),
+                action: () => { plannerDraft.startMinute = minute; updatePlannerEditorLabels(); }
+            })));
+        }
+
+        function choosePlannerHost() {
+            if (!plannerDraft) return;
+            const options = [
+                { label: 'NONE', action: () => setPlannerHost('none') },
+                { label: 'WASTELANDER-RUN', action: () => setPlannerHost('wastelander') }
+            ];
+            officialFactions.forEach(f => options.push({ label: String(f.name).slice(0, 60),
+                action: () => setPlannerHost('faction', f.id) }));
+            showCustomPrompt('SELECT HOSTING CLAN', options);
+        }
+
+        function setPlannerHost(type, id = '') {
+            if (!plannerDraft) return;
+            if (type === 'faction') {
+                const f = officialFactions.find(item => item.id === id);
+                if (!f) { showNotification('CLAN NO LONGER AVAILABLE.'); return; }
+                plannerDraft.hostType = 'faction'; plannerDraft.hostFactionId = f.id;
+                plannerDraft.hostFactionName = String(f.name).slice(0, 60);
+            } else {
+                plannerDraft.hostType = type === 'wastelander' ? 'wastelander' : 'none';
+                plannerDraft.hostFactionId = ''; plannerDraft.hostFactionName = '';
+            }
+            updatePlannerEditorLabels();
+        }
+
+        function togglePlannerBroadcast() {
+            if (!plannerDraft || !plannerIsOverseer()) return;
+            plannerDraft.broadcast = !plannerDraft.broadcast;
+            updatePlannerEditorLabels();
         }
 
         function savePlannerEvent() {
@@ -1650,18 +1788,22 @@
             const description = document.getElementById('planner-edit-description').value.trim();
             if (!window.db) { plannerEditorError('NO SATELLITE LINK — TRY AGAIN ONLINE.'); return; }
             if (!title || title.length > 100) { plannerEditorError('TITLE REQUIRED (MAX 100 CHARACTERS).'); return; }
-            if (location.length > 100 || description.length > 500) { plannerEditorError('LOCATION OR DETAILS TOO LONG.'); return; }
-            if (!plannerDays.some(d => d.key === draft.day) ||
-                !Number.isInteger(draft.startMinute) || !Number.isInteger(draft.endMinute) ||
-                draft.startMinute < 0 || draft.startMinute >= draft.endMinute || draft.endMinute > 1440 ||
-                draft.startMinute % 30 !== 0 || draft.endMinute % 30 !== 0) {
-                plannerEditorError('SELECT VALID HALF-HOUR START AND END TIMES WITHIN THIS DAY.'); return;
+            if (location.length > 100 || description.length > 500) { plannerEditorError('AREA OR DETAILS TOO LONG.'); return; }
+            if (!plannerDays.some(d => d.key === draft.day) || !plannerSlots.includes(draft.startMinute)) {
+                plannerEditorError('SELECT A VALID ONE-HOUR SLOT BETWEEN 10:00 AND 23:00.'); return;
+            }
+            if (!['none', 'wastelander', 'faction'].includes(draft.hostType) ||
+                (draft.hostType === 'faction' && !officialFactions.some(f => f.id === draft.hostFactionId))) {
+                plannerEditorError('SELECT AN AVAILABLE HOSTING CLAN.'); return;
             }
             plannerSaving = true;
             const saveButton = document.getElementById('planner-save-btn');
             if (saveButton) saveButton.disabled = true;
             const fields = { title, location, description, startMinute: draft.startMinute,
-                endMinute: draft.endMinute, updatedAt: Date.now() };
+                endMinute: draft.startMinute + 60, hostType: draft.hostType,
+                hostFactionId: draft.hostType === 'faction' ? draft.hostFactionId : '',
+                hostFactionName: draft.hostType === 'faction' ? draft.hostFactionName : '',
+                broadcast: draft.broadcast === true, updatedAt: Date.now() };
             const ref = window.firebaseRef(window.db, 'plannerEvents/' + draft.day + (draft.id ? '/' + draft.id : ''));
             const action = draft.id
                 ? window.firebaseUpdate(ref, fields)
@@ -1670,7 +1812,6 @@
             action.then(() => {
                 plannerSaving = false;
                 closePlannerEditor();
-                plannerDay = draft.day;
                 renderNukaPlanner();
                 showNotification(draft.id ? 'EVENT UPDATED.' : 'EVENT SCHEDULED.');
             }).catch(error => {
@@ -1681,7 +1822,7 @@
         }
 
         function confirmDeletePlannerEvent(day, id) {
-            if (!plannerIsOverseer() || !plannerDays.some(d => d.key === day)) return;
+            if (!plannerIsOverseer() || (!plannerDays.some(d => d.key === day) && day !== '2026-10-25')) return;
             const event = plannerEvents[day]?.[id];
             if (!event) return;
             showCustomPrompt('DELETE EVENT "' + event.title + '" FOR EVERYONE? THIS CANNOT BE UNDONE.', [
@@ -9986,7 +10127,8 @@
                 startRadZoneListener(); // v0.47
                 startStarchedListener(); // v0.58: Starched Genes global toggle
                 startQuestsListener(); // v0.91: Unified quest system (replaces globalContracts + bounties)
-                startNukaPlannerListener(); // v0.305: shared Overseer event schedule
+                startNukaPlannerListener(); // v0.308: shared Overseer event schedule
+                startPlannerClientReminders(); // best effort, only when a client is running/online
                 flushOutbox();
                 refreshOutboxStatuses();
                 renderMailBadge();
@@ -10287,12 +10429,12 @@
             renderRadioTab();
         }
 
-        // ==================== OVERSEER WIRE (v0.56) ====================
-        // One-slot satellite board (announcements/latest {text<=140, from<=32, ts}): the
-        // Overseer's voice onto every Pip-Boy. Own push switch (default ON), persistent
-        // amber banner under the header until dismissed; 12h expiry; survives offline boot.
-        let wireFirstSnap = true;
-        let lastWireObj = null;
+        // ==================== OVERSEER WIRE (v0.306) ====================
+        // 12-hour stacked feed. Latest remains for older installed clients / legacy senders.
+        // Native notifications only work while the page is active; NO closed-app Web Push.
+        let wireFeed = {}, wireLatest = null;
+        let wireFeedFirst = true, wireLatestFirst = true;
+        const wireSeen = new Set();
         function wireAlertsOn() { return localStorage.getItem('pipboy-wire-alerts') !== '0'; }
         function cycleWireAlerts() {
             const on = localStorage.getItem('pipboy-wire-alerts') === '0';
@@ -10301,42 +10443,81 @@
             if (b) b.innerText = '[WIRE ALERTS: ' + (on ? 'ON' : 'OFF') + ']';
             showNotification('WIRE ALERTS ' + (on ? 'ON.' : 'OFF.'));
         }
-        function startWireListener() {
-            window.firebaseOnValue(window.firebaseRef(window.db, 'announcements/latest'), (snap) => {
-                const w = snap.val();
-                try { if (w && w.ts) localStorage.setItem('pipboy-wire-last', JSON.stringify(w)); } catch (e) {}
-                const isFreshArrival = !wireFirstSnap && w && w.ts && (!lastWireObj || lastWireObj.ts !== w.ts);
-                lastWireObj = w || null;
-                updateWireBanner(lastWireObj);
-                if (wireFirstSnap) { wireFirstSnap = false; return; } // boot sync isn't news
-                if (isFreshArrival) {
-                    showNotification('OVERSEER WIRE: ' + String(w.text || '').toUpperCase());
-                    // v0.191: Play SOS Morse code for Overseer broadcasts
+        function wireKey(w) { return w.id || 'legacy_' + w.ts + '_' + w.text; }
+        function wireEntries() {
+            const entries = Object.values(wireFeed || {}).filter(w => w && w.ts && w.text);
+            if (wireLatest && wireLatest.ts && wireLatest.text &&
+                !entries.some(w => wireKey(w) === wireKey(wireLatest))) entries.push(wireLatest);
+            return entries.sort((a, b) => b.ts - a.ts || wireKey(b).localeCompare(wireKey(a)));
+        }
+        function wireDismissed() {
+            try { return JSON.parse(localStorage.getItem('pipboy-wire-dismissed-ids') || '[]'); }
+            catch (e) { return []; }
+        }
+        function renderWireStack() {
+            const box = document.getElementById('wire-stack');
+            if (!box) return;
+            const dismissed = new Set(wireDismissed());
+            const visible = wireEntries().filter(w => Date.now() - w.ts >= 0 &&
+                Date.now() - w.ts < 12 * 3600 * 1000 && !dismissed.has(wireKey(w)));
+            box.replaceChildren();
+            visible.forEach(w => {
+                const row = document.createElement('div'); row.className = 'wire-entry';
+                const text = document.createElement('span');
+                text.textContent = '📣 ' + String(w.text).toUpperCase();
+                const close = document.createElement('button'); close.type = 'button';
+                close.className = 'wire-dismiss'; close.textContent = '[X]';
+                close.setAttribute('aria-label', 'Dismiss announcement');
+                close.onclick = () => dismissWire(wireKey(w));
+                row.append(text, close); box.appendChild(row);
+            });
+            box.style.display = visible.length ? 'block' : 'none';
+            try { localStorage.setItem('pipboy-wire-feed-last', JSON.stringify(wireEntries().slice(0, 100))); } catch (e) {}
+        }
+        function dismissWire(id) {
+            const dismissed = wireDismissed().filter(key => key !== id);
+            dismissed.push(id);
+            localStorage.setItem('pipboy-wire-dismissed-ids', JSON.stringify(dismissed.slice(-200)));
+            renderWireStack();
+        }
+        function acceptWireArrivals(entries, initial) {
+            entries.forEach(w => {
+                if (!w || !w.ts || !w.text) return;
+                const key = wireKey(w);
+                if (wireSeen.has(key)) return;
+                wireSeen.add(key);
+                if (!initial && Date.now() - w.ts >= 0 && Date.now() - w.ts < 120000) {
+                    showNotification('OVERSEER WIRE: ' + String(w.text).toUpperCase());
                     playSound('sos');
-                    if (wireAlertsOn()) { try { pushNativeNotification('OVERSEER WIRE -- ' + String(w.text || '')); } catch (e) {} }
+                    if (wireAlertsOn()) { try { pushNativeNotification('OVERSEER WIRE -- ' + String(w.text)); } catch (e) {} }
                 }
+            });
+            renderWireStack();
+        }
+        function startWireListener() {
+            const feedQuery = window.firebaseQuery(window.firebaseRef(window.db, 'announcements/feed'),
+                window.firebaseOrderByChild('ts'), window.firebaseLimitToLast(100));
+            window.firebaseOnValue(feedQuery, snap => {
+                wireFeed = snap.val() || {};
+                acceptWireArrivals(Object.values(wireFeed), wireFeedFirst);
+                wireFeedFirst = false;
+            }, () => {});
+            window.firebaseOnValue(window.firebaseRef(window.db, 'announcements/latest'), snap => {
+                wireLatest = snap.val() || null;
+                acceptWireArrivals(wireLatest ? [wireLatest] : [], wireLatestFirst);
+                wireLatestFirst = false;
             }, () => {});
         }
-        function updateWireBanner(w) {
-            const b = document.getElementById('wire-banner');
-            if (!b) return;
-            const dismissed = localStorage.getItem('pipboy-wire-dismissed') || '';
-            const fresh = !!(w && w.ts && (Date.now() - w.ts) < 12 * 3600 * 1000);
-            if (fresh && String(w.ts) !== dismissed) {
-                document.getElementById('wire-banner-text').innerText = String(w.text || '').toUpperCase();
-                b.style.display = 'block';
-            } else {
-                b.style.display = 'none';
-            }
-        }
-        function dismissWire() {
-            if (lastWireObj && lastWireObj.ts) localStorage.setItem('pipboy-wire-dismissed', String(lastWireObj.ts));
-            const b = document.getElementById('wire-banner');
-            if (b) b.style.display = 'none';
-        }
-        // Offline boot: paint the last wire from storage until the satellite answers.
+        // Offline boot: show cached stack until the satellite answers, never ping for it.
         (function bootWireFromStorage() {
-            try { const w = JSON.parse(localStorage.getItem('pipboy-wire-last') || 'null'); if (w && w.ts) { lastWireObj = w; updateWireBanner(w); } } catch (e) {}
+            try {
+                const last = JSON.parse(localStorage.getItem('pipboy-wire-feed-last') || '[]');
+                if (Array.isArray(last)) last.forEach(w => { if (w && w.ts) wireFeed[wireKey(w)] = w; });
+                else wireFeed = {};
+                const legacy = JSON.parse(localStorage.getItem('pipboy-wire-last') || 'null');
+                if (legacy && legacy.ts) wireLatest = legacy;
+                renderWireStack();
+            } catch (e) { wireFeed = {}; }
             const b = document.getElementById('options-wire-btn');
             if (b && localStorage.getItem('pipboy-wire-alerts') === '0') b.innerText = '[WIRE ALERTS: OFF]';
         })();
@@ -10348,10 +10529,13 @@
             showCustomPrompt('TRANSMIT THIS WIRE TO EVERY PIP-BOY?\n\n"' + text + '"', [
                 { label: 'TRANSMIT', color: '#ffb642', action: () => {
                     if (!window.db) { showNotification('NO SATELLITE LINK.'); return; }
-                    window.firebaseSet(window.firebaseRef(window.db, 'announcements/latest'), {
-                        text: text, from: (userProfile.name || 'OVERSEER').toUpperCase().slice(0, 32), ts: Date.now()
+                    const id = window.firebasePush(window.firebaseRef(window.db, 'announcements/feed')).key;
+                    const w = { id, text, from: (userProfile.name || 'OVERSEER').toUpperCase().slice(0, 32),
+                        ts: Date.now(), kind: 'manual' };
+                    window.firebaseUpdate(window.firebaseRef(window.db), {
+                        ['announcements/feed/' + id]: w, 'announcements/latest': w
                     }).then(() => { showNotification('WIRE TRANSMITTED.'); const t2 = document.getElementById('wire-text'); if (t2) t2.value = ''; })
-                      .catch(() => showNotification('WIRE REJECTED -- RULES NEED THE ANNOUNCEMENTS NODE (RULES PASTE STEP).'));
+                      .catch(() => showNotification('WIRE REJECTED -- CHECK ANNOUNCEMENTS RULES.'));
                 }},
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);

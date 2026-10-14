@@ -930,3 +930,27 @@ body.chronicle-radiation {
 .planner-time-buttons { display:flex; gap:10px; }
 .planner-time-buttons .form-group { flex:1; min-width:0; }
 .planner-time-buttons .pip-btn { width:100%; }
+
+/* v0.306 independently dismissible stacked Overseer WIRE announcements. */
+#wire-stack { margin:4px 10px; max-height:30vh; overflow-y:auto; }
+.wire-entry { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; border:2px dashed #ffb642; color:#ffb642; text-shadow:0 0 6px #ffb642; padding:8px 10px; margin-bottom:4px; background:rgba(20,12,0,.85); font-size:.95rem; overflow-wrap:anywhere; }
+.wire-entry span { min-width:0; }
+.wire-dismiss { flex-shrink:0; color:#ffb642; background:transparent; border:0; cursor:pointer; font:inherit; padding:0 2px; }
+
+/* v0.307 three-day single-board timetable. Rows naturally grow with parallel events. */
+.planner-grid-wrap { max-height:68vh; overflow:auto; }
+.planner-grid { display:block; min-width:0; width:100%; }
+.planner-board-day { position:sticky; top:0; z-index:4; background:var(--pip-bg); color:#ffb642; border:1px solid #ffb642; padding:9px; font-size:1.15rem; }
+.planner-board-row { display:grid; grid-template-columns:minmax(90px, 120px) minmax(0, 1fr); border-bottom:1px dashed var(--pip-color-dim); min-height:56px; }
+.planner-board-time { position:static; padding:10px 5px; border-right:1px solid var(--pip-color-dim); font-size:.95rem; overflow-wrap:anywhere; }
+.planner-board-events { display:flex; flex-direction:column; gap:5px; min-width:0; padding:5px 7px; }
+.planner-board-event { display:block; width:100%; text-align:left; background:rgba(0,0,0,.3); color:var(--pip-color); border:1px solid var(--pip-color-dim); padding:5px 8px; cursor:pointer; font:inherit; overflow-wrap:anywhere; }
+.planner-board-event:hover,.planner-board-event:focus { outline:2px solid #ffb642; }
+.planner-board-event strong,.planner-board-event small { display:block; }
+.planner-board-event small { opacity:.8; font-size:.84rem; }
+.planner-board-empty { opacity:.4; }
+.planner-board-add { align-self:flex-start; border:0; background:transparent; color:#ffb642; cursor:pointer; font:inherit; font-size:.85rem; padding:1px; }
+
+.planner-board-columns { display:grid; grid-template-columns:minmax(90px, 120px) minmax(0,1fr); gap:0; font-size:.9rem; color:#ffb642; border:1px solid var(--pip-color-dim); }
+.planner-board-columns span { padding:5px; }
+.planner-board-columns span:first-child { border-right:1px solid var(--pip-color-dim); }
