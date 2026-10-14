@@ -1415,10 +1415,11 @@
             }
         }
 
-        // ================= v0.308 NUKA PLANNER =================
+        // ================= v0.309 NUKA PLANNER =================
         // Display year 2226; real schedule keys are 2026 dates in Australia/Perth.
         // Never construct a Date in year 2226 for event logic.
         const plannerDays = [
+            { key: '2026-10-14', label: 'TEST DAY · WED 14/10/2226' },
             { key: '2026-10-22', label: 'THU 22/10/2226' },
             { key: '2026-10-23', label: 'FRI 23/10/2226' },
             { key: '2026-10-24', label: 'SAT 24/10/2226' }
@@ -1437,7 +1438,7 @@
         const plannerReminderDone = new Set();
 
         function plannerReminderStartMs(day, minute) {
-            if (!plannerDays.some(d => d.key === day) || !plannerSlots.includes(minute)) return NaN;
+            if (!plannerSlotsForDay(day).includes(minute)) return NaN;
             return Date.parse(day + 'T00:00:00+08:00') + minute * 60000;
         }
         function plannerReminderKey(day, id) {
@@ -1570,11 +1571,16 @@
             });
         }
 
-        const plannerSlots = Array.from({ length: 14 }, (_, i) => 600 + i * 60);
+        const plannerFestivalSlots = Array.from({ length: 14 }, (_, i) => 600 + i * 60);
+        const plannerTestSlots = Array.from({ length: 12 }, (_, i) => 360 + i * 60);
+        function plannerSlotsForDay(day) {
+            if (day === '2026-10-14') return plannerTestSlots;
+            return plannerDays.some(d => d.key === day) ? plannerFestivalSlots : [];
+        }
         function plannerOnBoard(day, event) {
             return plannerDays.some(d => d.key === day) && event &&
                 typeof event.title === 'string' && Number.isInteger(event.startMinute) &&
-                plannerSlots.includes(event.startMinute) && event.endMinute === event.startMinute + 60;
+                plannerSlotsForDay(day).includes(event.startMinute) && event.endMinute === event.startMinute + 60;
         }
         function plannerEventsForSlot(day, minute) {
             return Object.entries(plannerEvents[day] || {})
@@ -1619,7 +1625,7 @@
                 header.className = 'planner-board-day';
                 header.textContent = day.label;
                 board.appendChild(header);
-                plannerSlots.forEach(minute => {
+                plannerSlotsForDay(day.key).forEach(minute => {
                     const row = document.createElement('div');
                     row.className = 'planner-board-row';
                     const time = document.createElement('div');
@@ -1655,7 +1661,7 @@
                 });
             });
             status.textContent = plannerListenError || (!plannerLoaded ? 'CONNECTING TO EVENT SCHEDULE...'
-                : `${count} EVENT${count === 1 ? '' : 'S'} · THU–SAT · 10:00–24:00 AWST` +
+                : `${count} EVENT${count === 1 ? '' : 'S'} · WED TEST 06:00–18:00 / THU–SAT 10:00–24:00 AWST` +
                   (archive.length ? ` · ${archive.length} PREVIOUS-FORMAT EVENT${archive.length === 1 ? '' : 'S'} RETAINED` : ''));
         }
 
@@ -1737,13 +1743,18 @@
         function choosePlannerDay() {
             if (!plannerDraft || plannerDraft.id) return;
             showCustomPrompt('SELECT EVENT DAY', plannerDays.map(d => ({
-                label: d.label, action: () => { plannerDraft.day = d.key; updatePlannerEditorLabels(); }
+                label: d.label, action: () => {
+                    plannerDraft.day = d.key;
+                    if (!plannerSlotsForDay(d.key).includes(plannerDraft.startMinute))
+                        plannerDraft.startMinute = plannerSlotsForDay(d.key)[0];
+                    updatePlannerEditorLabels();
+                }
             })));
         }
 
         function choosePlannerSlot() {
             if (!plannerDraft) return;
-            showCustomPrompt('SELECT ONE-HOUR SLOT (AWST)', plannerSlots.map(minute => ({
+            showCustomPrompt('SELECT ONE-HOUR SLOT (AWST)', plannerSlotsForDay(plannerDraft.day).map(minute => ({
                 label: plannerClock(minute) + '–' + plannerClock(minute + 60),
                 action: () => { plannerDraft.startMinute = minute; updatePlannerEditorLabels(); }
             })));
@@ -1789,8 +1800,8 @@
             if (!window.db) { plannerEditorError('NO SATELLITE LINK — TRY AGAIN ONLINE.'); return; }
             if (!title || title.length > 100) { plannerEditorError('TITLE REQUIRED (MAX 100 CHARACTERS).'); return; }
             if (location.length > 100 || description.length > 500) { plannerEditorError('AREA OR DETAILS TOO LONG.'); return; }
-            if (!plannerDays.some(d => d.key === draft.day) || !plannerSlots.includes(draft.startMinute)) {
-                plannerEditorError('SELECT A VALID ONE-HOUR SLOT BETWEEN 10:00 AND 23:00.'); return;
+            if (!plannerDays.some(d => d.key === draft.day) || !plannerSlotsForDay(draft.day).includes(draft.startMinute)) {
+                plannerEditorError('SELECT AN AVAILABLE ONE-HOUR SLOT FOR THIS DAY.'); return;
             }
             if (!['none', 'wastelander', 'faction'].includes(draft.hostType) ||
                 (draft.hostType === 'faction' && !officialFactions.some(f => f.id === draft.hostFactionId))) {

@@ -218,7 +218,7 @@
         ],
         "$wireId": {
           ".write": "!data.exists() && ((!$wireId.matches(/^planner_.*/) && newData.child('kind').val() == 'manual') || ($wireId.matches(/^planner_.*/) && newData.child('kind').val() == 'event'))",
-          ".validate": "newData.hasChildren(['id', 'text', 'from', 'ts', 'kind']) && newData.child('id').val() == $wireId && ((newData.child('kind').val() == 'manual' && !$wireId.matches(/^planner_.*/) && !newData.child('day').exists() && !newData.child('eventId').exists()) || (newData.child('kind').val() == 'event' && newData.hasChildren(['day', 'eventId']) && $wireId == 'planner_' + newData.child('day').val() + '_' + newData.child('eventId').val() && (newData.child('day').val() == '2026-10-22' || newData.child('day').val() == '2026-10-23' || newData.child('day').val() == '2026-10-24') && root.child('plannerEvents').child(newData.child('day').val()).child(newData.child('eventId').val()).child('broadcast').val() == true && newData.child('ts').val() >= now - 60000 && newData.child('ts').val() <= now + 60000))",
+          ".validate": "newData.hasChildren(['id', 'text', 'from', 'ts', 'kind']) && newData.child('id').val() == $wireId && ((newData.child('kind').val() == 'manual' && !$wireId.matches(/^planner_.*/) && !newData.child('day').exists() && !newData.child('eventId').exists()) || (newData.child('kind').val() == 'event' && newData.hasChildren(['day', 'eventId']) && $wireId == 'planner_' + newData.child('day').val() + '_' + newData.child('eventId').val() && (newData.child('day').val() == '2026-10-14' || newData.child('day').val() == '2026-10-22' || newData.child('day').val() == '2026-10-23' || newData.child('day').val() == '2026-10-24') && root.child('plannerEvents').child(newData.child('day').val()).child(newData.child('eventId').val()).child('broadcast').val() == true && newData.child('ts').val() >= now - 60000 && newData.child('ts').val() <= now + 60000))",
           "id": {
             ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
           },
@@ -238,7 +238,7 @@
             ".validate": false
           },
           "day": {
-            ".validate": "newData.isString() && (newData.val() == '2026-10-22' || newData.val() == '2026-10-23' || newData.val() == '2026-10-24')"
+            ".validate": "newData.isString() && (newData.val() == '2026-10-14' || newData.val() == '2026-10-22' || newData.val() == '2026-10-23' || newData.val() == '2026-10-24')"
           },
           "eventId": {
             ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
@@ -650,7 +650,7 @@
       "$day": {
         "$eventId": {
           ".write": true,
-          ".validate": "($day == '2026-10-22' || $day == '2026-10-23' || $day == '2026-10-24') && newData.hasChildren(['title', 'startMinute', 'endMinute', 'createdAt', 'hostType']) && newData.child('endMinute').val() == newData.child('startMinute').val() + 60 && (newData.child('hostType').val() != 'faction' || (newData.child('hostFactionId').isString() && newData.child('hostFactionId').val().length > 0 && newData.child('hostFactionName').isString() && newData.child('hostFactionName').val().length > 0))",
+          ".validate": "(($day == '2026-10-14' && newData.child('startMinute').val() >= 360 && newData.child('startMinute').val() <= 1020) || (($day == '2026-10-22' || $day == '2026-10-23' || $day == '2026-10-24') && newData.child('startMinute').val() >= 600 && newData.child('startMinute').val() <= 1380)) && newData.hasChildren(['title', 'startMinute', 'endMinute', 'createdAt', 'hostType']) && newData.child('endMinute').val() == newData.child('startMinute').val() + 60 && (newData.child('hostType').val() != 'faction' || (newData.child('hostFactionId').isString() && newData.child('hostFactionId').val().length > 0 && newData.child('hostFactionName').isString() && newData.child('hostFactionName').val().length > 0))",
           "title": {
             ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
           },
@@ -661,10 +661,10 @@
             ".validate": "newData.isString() && newData.val().length <= 500"
           },
           "startMinute": {
-            ".validate": "newData.isNumber() && newData.val() >= 600 && newData.val() <= 1380 && newData.val() % 60 == 0"
+            ".validate": "newData.isNumber() && newData.val() >= 360 && newData.val() <= 1380 && newData.val() % 60 == 0"
           },
           "endMinute": {
-            ".validate": "newData.isNumber() && newData.val() >= 660 && newData.val() <= 1440 && newData.val() % 60 == 0"
+            ".validate": "newData.isNumber() && newData.val() >= 420 && newData.val() <= 1440 && newData.val() % 60 == 0"
           },
           "createdAt": {
             ".validate": "newData.isNumber() && newData.val() > 1735689600000"

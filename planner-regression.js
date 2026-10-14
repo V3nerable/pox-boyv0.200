@@ -1,9 +1,9 @@
-// v0.308 single-board NUKA PLANNER regression. Run: node tests/planner-regression.js
+// v0.309 single-board NUKA PLANNER regression. Run: node tests/planner-regression.js
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const app=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const rules=JSON.parse(fs.readFileSync(path.join(__dirname,'..','firebase-rules.json'),'utf8')).rules;
-const start=app.indexOf('// ================= v0.308 NUKA PLANNER'),end=app.indexOf('function cycleTheme()',start);
+const start=app.indexOf('// ================= v0.309 NUKA PLANNER'),end=app.indexOf('function cycleTheme()',start);
 assert(start>=0 && end>start);
 function element(){return {children:[],style:{},textContent:'',value:'',disabled:false,
   classList:{contains:()=>true},appendChild(child){this.children.push(child)},
@@ -18,7 +18,9 @@ async function run(){
   assert.equal(rule['.write'],true);
   for(let d=22;d<=24;d++) assert(rule['.validate'].includes(`2026-10-${d}`));
   assert(!rule['.validate'].includes('2026-10-25'));
+  assert(rule['.validate'].includes('2026-10-14'));
   assert(rule.startMinute['.validate'].includes('% 60 == 0'));
+  assert(rule.startMinute['.validate'].includes('>= 360'));
   assert(rule.startMinute['.validate'].includes('<= 1380'));
   assert(rule['.validate'].includes("+ 60"));
   const ids=['planner-grid','planner-status','planner-add-btn','planner-grid-wrap','planner-archive-btn',
@@ -50,10 +52,12 @@ async function run(){
   c.renderNukaPlanner();
   const rows=els['planner-grid'].children.filter(x=>x.className==='planner-board-row');
   const headers=els['planner-grid'].children.filter(x=>x.className==='planner-board-day');
-  assert.equal(headers.length,3);assert(headers[0].textContent.includes('2226'));
-  assert.equal(rows.length,42);
-  assert.equal(rows[0].children[0].textContent,'10:00–11:00');
-  const firstCards=rows[0].children[1].children.filter(x=>x.className==='planner-board-event');
+  assert.equal(headers.length,4);assert(headers[0].textContent.includes('TEST DAY'));
+  assert.equal(rows.length,54);
+  assert.equal(rows[0].children[0].textContent,'06:00–07:00');
+  assert.equal(rows[11].children[0].textContent,'17:00–18:00');
+  assert.equal(rows[12].children[0].textContent,'10:00–11:00');
+  const firstCards=rows[12].children[1].children.filter(x=>x.className==='planner-board-event');
   assert.equal(firstCards.length,2); // shared hour expands its row, no overlapping columns
   assert(firstCards.some(card=>card.children[1].textContent.includes('NCR · AREA: Garage')));
   assert(firstCards.some(card=>card.children[1].textContent.includes('WASTELANDER-RUN')));
@@ -65,7 +69,7 @@ async function run(){
   prompts.at(-1).buttons.find(b=>b.label.includes('Sunday')).action();
   assert(!prompts.at(-1).buttons.some(b=>b.label==='EDIT EVENT'));
   // Overseer chooses a slot, one of two special hosts or an official faction, then saves.
-  c.openPlannerEditor();
+  c.openPlannerEditor('2026-10-22');
   assert.equal(els['planner-editor-modal'].style.display,'flex');
   assert(els['planner-edit-broadcast'].textContent.includes('NO'));
   c.togglePlannerBroadcast();assert(els['planner-edit-broadcast'].textContent.includes('YES'));
@@ -84,6 +88,15 @@ async function run(){
   assert.equal(pushes[0].data.hostFactionId,'fac1');
   assert.equal(pushes[0].data.location,'Pit');
   assert.equal(pushes[0].data.broadcast,true);
+  // Today is a distinct test day, with 06:00–18:00 slots only.
+  c.openPlannerEditor('2026-10-14');
+  c.choosePlannerSlot(); assert.equal(prompts.at(-1).buttons.length,12);
+  assert.equal(prompts.at(-1).buttons[0].label,'06:00–07:00');
+  assert.equal(prompts.at(-1).buttons.at(-1).label,'17:00–18:00');
+  c.choosePlannerDay();
+  prompts.at(-1).buttons.find(b=>b.label.startsWith('THU')).action();
+  assert.equal(els['planner-edit-slot'].textContent,'SLOT: 10:00–11:00');
+  c.closePlannerEditor();
   assert.equal(els['planner-editor-modal'].style.display,'none');
   // Existing one-hour records without new host fields may be edited; no silent migration.
   c.openPlannerEditor('2026-10-22','c');
@@ -110,6 +123,6 @@ async function run(){
   c.openPlannerEditor();c.savePlannerEvent();assert.equal(pushes.length,1);
   listenFail(new Error('permission denied'));
   assert(els['planner-status'].textContent.includes('CHECK FIREBASE RULES'));
-  console.log('PASS: 3x14 board, multi-event rows, official faction/special hosts, archived legacy, CRUD gate, derived hour, rules');
+  console.log('PASS: 12 test + 3x14 festival board, multi-event rows, official faction/special hosts, archived legacy, CRUD gate, derived hour, rules');
 }
 run().catch(e=>{console.error(e);process.exitCode=1});

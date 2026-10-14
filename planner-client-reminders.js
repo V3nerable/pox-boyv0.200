@@ -1,8 +1,8 @@
-// v0.308: client-only reminder tests with two devices and a fake RTDB transaction journal.
+// v0.309: client-only reminder tests with two devices and a fake RTDB transaction journal.
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const app=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
-const block=app.slice(app.indexOf('// ================= v0.308 NUKA PLANNER'),app.indexOf('function cycleTheme()',app.indexOf('// ================= v0.308 NUKA PLANNER')));
+const block=app.slice(app.indexOf('// ================= v0.309 NUKA PLANNER'),app.indexOf('function cycleTheme()',app.indexOf('// ================= v0.309 NUKA PLANNER')));
 assert(block.includes('function startPlannerClientReminders'));
 const rules=JSON.parse(fs.readFileSync(path.join(__dirname,'..','firebase-rules.json'),'utf8')).rules;
 assert(rules.announcements.feed.$wireId['.validate'].includes("newData.child('kind').val() == 'event'"));
@@ -71,5 +71,14 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve));}
   third.listeners['.info/serverTimeOffset'](snapshot(0));
   third.listeners['.info/connected'](snapshot(true));await flush();
   assert.equal(feedCommits,2,'after start, do not send a late reminder');
-  console.log('PASS: client-only WIRE, network guard, 15-minute window, concurrent claims, recovery, no after-start send');
+  const testDue=Date.parse('2026-10-14T09:45:00+08:00');
+  now=testDue;
+  const test=client();test.listeners['plannerEvents'](snapshot({'2026-10-14':{
+    today:{title:'TEST ONLY',startMinute:600,endMinute:660,broadcast:true,
+      createdAt:testDue-60000,updatedAt:testDue-60000}}}));
+  test.listeners['.info/serverTimeOffset'](snapshot(0));
+  test.listeners['.info/connected'](snapshot(true));await flush();
+  assert.equal(feedCommits,3,'test day uses real Oct 14 Perth timestamp');
+  assert(journal['announcements/feed/planner_2026-10-14_today'].text.includes('14/10/2226 10:00'));
+  console.log('PASS: today test day and festival, client-only WIRE, network guard, 15-minute window, concurrent claims, recovery');
 })().catch(error=>{console.error(error);process.exitCode=1});
