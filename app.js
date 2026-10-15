@@ -366,6 +366,13 @@
         const WAYPOINT_VERSION = 1; // bump this when adding new default waypoints
 
         let waypoints = JSON.parse(localStorage.getItem('pipboy-waypoints')) || DEFAULT_WAYPOINTS;
+        // v0.310: old blank-name saves produced local-only UNKNOWN LOCATION
+        // placeholders. Remove exactly those placeholders; preserve all named pins
+        // and never touch Firebase/sharedpins without an explicit confirmation.
+        const oldUnknownWaypointCount = waypoints.length;
+        waypoints = waypoints.filter(wp => String(wp?.name || '').toUpperCase() !== 'UNKNOWN LOCATION');
+        if (waypoints.length !== oldUnknownWaypointCount)
+            localStorage.setItem('pipboy-waypoints', JSON.stringify(waypoints));
 
         // Merge new default waypoints for existing users who already have a waypoint list
         (function mergeWaypoints() {
@@ -4632,6 +4639,10 @@
         let tempWpLat = null;
         let tempWpLng = null;
         function openAddWaypointModal(lat, lng) {
+            if ((lat === undefined || lng === undefined) && !pipMap) {
+                showNotification('MAP NOT READY — OPEN THE MAP AND TRY AGAIN.');
+                return;
+            }
             // v0.298: Keep the Overseer display beneath this higher-z-index marker
             // modal so CANCEL/closeModals() returns there, not to the main screen.
             setModalState(true, 'add-waypoint');
@@ -5203,7 +5214,10 @@
             Object.keys(lastKnownSharedPins).forEach(key => {
                 const p = lastKnownSharedPins[key];
                 if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') return;
-                if (p.from && myMailUid && p.from === myMailUid) return; // v0.46: self-echo filter — your LOCAL marker already is your view of your broadcast; the diamond is for everyone else
+                // Overseer can inspect/remove their own shared broadcasts. Other
+                // senders keep the historical self-echo filter to avoid two pins.
+                if (p.from && myMailUid && p.from === myMailUid &&
+                    localStorage.getItem('pipboy-dev-mode') !== 'true') return;
                 // v0.63: only prune non-permanent pins (overseer-broadcast pins have permanent:true)
                 if (!p.permanent && (!p.ts || (now - p.ts) > 72 * 60 * 60 * 1000)) return; // stale: skip
                 const who = p.fromName ? (' — VIA ' + String(p.fromName).toUpperCase()) : '';
@@ -5480,9 +5494,19 @@
         }
 
         function saveNewWaypoint() {
-            const name = document.getElementById('wp-name').value.trim() || 'UNKNOWN LOCATION';
-            
-            if (tempWpLat === null || tempWpLng === null) return;
+            const name = document.getElementById('wp-name').value.trim();
+            if (!name) {
+                showNotification('MARKER NAME REQUIRED — NOTHING WAS SAVED.');
+                return;
+            }
+            if (name.length > 32) {
+                showNotification('MARKER NAME TOO LONG (32 CHARACTERS MAX).');
+                return;
+            }
+            if (!Number.isFinite(tempWpLat) || !Number.isFinite(tempWpLng)) {
+                showNotification('MAP POSITION NOT READY — NOTHING WAS SAVED.');
+                return;
+            }
 
             const wp = {
                 id: Date.now(),
@@ -5494,9 +5518,7 @@
             waypoints.push(wp);
 
             saveToStorage();
-            if (document.getElementById('tab-map').classList.contains('active')) {
-                renderMarkers();
-            }
+            if (pipMap) renderMarkers(); // also redraw when the map lives inside Overseer display
             closeModals();
             // v0.38: offer to sync the new marker out to every other Pip-Boy (opt-in per
             // marker -- silent auto-broadcast of every scribble would flood the board)
@@ -5530,9 +5552,7 @@
         function deleteWaypointById(idToRemove) {
             waypoints = waypoints.filter(wp => wp.id !== idToRemove);
             saveToStorage();
-            if (document.getElementById('tab-map').classList.contains('active')) {
-                renderMarkers();
-            }
+            if (pipMap) renderMarkers(); // MAP tab or moved Overseer map
             closeModals();
         }
 
@@ -10013,6 +10033,23 @@
                 }},
                 { label: 'CANCEL', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
+        }
+
+        // v0.310: Overseer display cannot rely on tapping overlapping local/shared
+        // markers. Offer a named removal list for every Firebase broadcast pin.
+        function openRemoveSharedPinModal() {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true') {
+                showNotification('OVERSEER ACCESS REQUIRED.'); return;
+            }
+            const pins = Object.entries(lastKnownSharedPins || {}).filter(([, p]) =>
+                p && typeof p.lat === 'number' && typeof p.lng === 'number')
+                .sort((a, b) => String(a[1].label || '').localeCompare(String(b[1].label || '')));
+            if (!pins.length) { showNotification('NO SHARED MARKERS TO REMOVE.'); return; }
+            showCustomPrompt('SELECT SHARED MARKER TO REMOVE FROM EVERY UNIT', pins.map(([key, p]) => ({
+                label: '✖ ' + String(p.label || 'UNNAMED').toUpperCase() +
+                    ' — VIA ' + String(p.fromName || 'UNKNOWN').toUpperCase(),
+                action: () => removeSharedPin(key)
+            })));
         }
 
         function updateZoneCard() {
