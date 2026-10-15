@@ -61,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.311</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.313</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -846,7 +846,7 @@
             <div class="form-group"><label>MARKER NAME</label><input type="text" id="wp-name" class="pip-input vk-target" maxlength="32" readonly onclick="openVk('wp-name')" placeholder="e.g. VIP Bar"></div>
             <p style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 15px;">Coordinates locked to map selection.</p>
             <button class="pip-btn" onclick="pickWaypointPhoto()">[OPTIONAL PHOTO FROM DATABANK]</button>
-            <img id="wp-photo-preview" alt="Selected marker thumbnail" style="display:none;width:64px;height:64px;object-fit:cover;border:5px solid #ffb642;border-radius:50%;box-sizing:border-box;margin:8px auto;">
+            <img id="wp-photo-preview" alt="Selected marker thumbnail" style="display:none;width:48px;height:48px;object-fit:cover;border:5px solid #ffb642;border-radius:50%;box-sizing:border-box;margin:8px auto;">
             <button id="wp-photo-clear" class="pip-btn" onclick="clearWaypointPhoto()" style="display:none;border-style:dashed;">REMOVE SELECTED PHOTO</button>
 
             <!-- v0.52: privacy decoy placement — available to every unit, Overseer or not -->
@@ -859,6 +859,7 @@
                 <button class="pip-btn" onclick="dropDeconZone('map')" style="border-color:#42d4f5; color:#42d4f5;">[✦ DECON STATION HERE (15M)]</button>
             </div>
 
+            <div id="wp-save-feedback" role="alert" aria-live="assertive" style="display:none;color:#ff7777;border:1px solid #ff3333;padding:8px;margin:8px 0;"></div>
             <button class="pip-btn" onclick="saveNewWaypoint()">SAVE MARKER</button>
             <button class="pip-btn" onclick="closeModals()" style="margin-top: 15px; border-style: dashed;">CANCEL</button>
         </div>
@@ -994,7 +995,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.311</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.313</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1025,7 +1026,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.311</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.313</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
@@ -1078,7 +1079,7 @@
                 <h1 style="margin: 0; font-size: 2.5rem; color: var(--pip-color); text-shadow: 0 0 20px var(--pip-color), 0 0 40px var(--pip-color); letter-spacing: 3px; font-weight: bold;">☢ POX ECLIPSE 2026 ☢</h1>
                 <div style="display: flex; gap: 15px; align-items: center;">
                     <button class="pip-btn" onclick="cycleTheme()" style="padding: 8px 15px; border-style: dashed;">🎨 THEME</button>
-                    <span id="overseer-refresh-timer" style="font-size: 0.9rem; opacity: 0.7;">Auto-refresh: 30s</span>
+                    <span id="overseer-refresh-timer" style="font-size: 0.9rem; opacity: 0.7;">Auto-refresh: 5:00</span>
                     <button class="pip-btn" onclick="closeOverseerDisplay()" style="padding: 8px 20px; border-color: #ff3333; color: #ff3333;">✕ CLOSE</button>
                 </div>
             </div>
@@ -1125,9 +1126,9 @@
                             <select id="chronicle-frequency" class="pip-input" style="width: auto; padding: 2px 6px; font-size: 0.75rem; margin: 0;" onchange="updateChronicleFrequency()">
                                 <option value="10000">10s</option>
                                 <option value="30000">30s</option>
-                                <option value="60000" selected>1m</option>
+                                <option value="60000">1m</option>
                                 <option value="120000">2m</option>
-                                <option value="300000">5m</option>
+                                <option value="300000" selected>5m</option>
                             </select>
                             <button class="theme-btn" onclick="refreshChronicleNow()" style="padding: 2px 8px; font-size: 0.75rem; margin: 0;">↻ REFRESH</button>
                         </div>
@@ -1143,9 +1144,10 @@
                     <div style="display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap;">
                         <p style="font-size: 0.75rem; opacity: 0.7; margin: 0; flex: 1;">[CENTER DOT = MARKER POSITION]</p>
                         <button class="theme-btn" onclick="overseerCenterMap()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">◎ CENTER</button>
-                        <button class="theme-btn" onclick="openAddWaypointModal()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">+ MARKER</button>
+                        <button class="theme-btn" onclick="overseerAddMarker()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">+ MARKER</button>
                         <button class="theme-btn" id="overseer-remove-selected" onclick="removeOverseerSelectedMarker()" style="display:none;padding: 4px 8px; font-size: 0.75rem; margin: 0;"></button>
                     </div>
+                    <div id="overseer-marker-status" role="status" aria-live="polite" style="display:none;border:1px solid var(--pip-color);padding:5px;margin-bottom:5px;font-size:0.85rem;"></div>
                     <div style="position: relative; flex-grow: 1; min-height: 400px;">
                         <div id="overseer-map-container" style="border: 1px solid var(--pip-color); position: relative; width: 100%; height: 100%;">
                             <!-- Main map will be moved here when overseer display opens -->

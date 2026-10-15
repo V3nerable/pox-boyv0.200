@@ -99,5 +99,25 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve));}
  assert.equal(picEls['pp-snap-btn'].style.display,'');
  assert.equal(picEls['wp-photo-preview'].style.display,'block');
  assert.equal(pic.tempWpPhoto,'data:image/jpeg;base64,QUJD');
+ // Overseer gets visible save/broadcast feedback (notification overlay is behind it).
+ const statuses={'overseer-display-modal':{style:{display:'flex'}},
+   'overseer-marker-status':{textContent:'',style:{display:'none'}}};
+ const broadcasts=[];let shouldFail=false;
+ const signal=vm.createContext({Date,Math,console:{error(){}},
+   localStorage:{getItem:()=> 'true'},navigator:{onLine:true},
+   userProfile:{name:'Overseer'},myMailUid:'overseer',
+   document:{getElementById:id=>statuses[id]},
+   showNotification:()=>{throw Error('banner should show inside Overseer')},
+   safeMarkerPhoto:()=>null,window:{db:{},firebaseRef:(_db,id)=>id,
+     firebaseSet:async(_ref,data)=>{if(shouldFail)throw Error('rules');broadcasts.push(data)}}});
+ vm.runInContext(part('function announceWaypointResult(', 'function showWaypointSaveError('),signal);
+ vm.runInContext(part('function broadcastWaypoint(', '// v0.55: takes the id directly now'),signal);
+ signal.broadcastWaypoint({name:'RADIO',lat:1,lng:2},true);await flush();
+ assert.equal(statuses['overseer-marker-status'].style.display,'block');
+ assert(statuses['overseer-marker-status'].textContent.includes('SHARED WITH EVERYONE'));
+ assert.equal(broadcasts.length,1);
+ shouldFail=true;signal.broadcastWaypoint({name:'RADIO',lat:1,lng:2},true);await flush();
+ assert(statuses['overseer-marker-status'].textContent.includes('STAYS ON THIS DEVICE'));
+ assert.equal(statuses['overseer-marker-status'].style.borderColor,'#ff3333');
  console.log('PASS: 15m pairwise gatherings, tiers, 40 variants, decoy exclusion, transactional dedup, selected-only removal, confirmed scoped cleanup, thumbnail rules');
 })().catch(e=>{console.error(e);process.exitCode=1});

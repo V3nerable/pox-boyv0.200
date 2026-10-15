@@ -4650,6 +4650,8 @@
             suspendVisibleModals('add-waypoint-modal', 'add-waypoint', ['overseer-display-modal']);
             
             document.getElementById('wp-name').value = '';
+            const feedback = document.getElementById('wp-save-feedback');
+            if (feedback) { feedback.textContent = ''; feedback.style.display = 'none'; }
             tempWpPhoto = null;
             updateWaypointPhotoPreview();
             if (lat !== undefined && lng !== undefined) {
@@ -5254,8 +5256,8 @@
         }
         function markerPhotoIcon(photo) {
             return L.divIcon({ className: 'custom-pip-marker',
-                html: '<div style="width:64px;height:64px;box-sizing:border-box;border-radius:50%;border:5px solid #ffb642;box-shadow:0 0 16px #ffb642;overflow:hidden;background:#000"><img alt="MAP MARKER" src="' + photo + '" style="width:100%;height:100%;object-fit:cover"></div>',
-                iconSize: [64, 64], iconAnchor: [32, 32] });
+                html: '<div style="width:48px;height:48px;box-sizing:border-box;border-radius:50%;border:5px solid #ffb642;box-shadow:0 0 16px #ffb642;overflow:hidden;background:#000"><img alt="MAP MARKER" src="' + photo + '" style="width:100%;height:100%;object-fit:cover"></div>',
+                iconSize: [48, 48], iconAnchor: [24, 24] });
         }
 
         // v0.56: the live signal census chip on the map edge
@@ -5288,9 +5290,10 @@
                     localStorage.getItem('pipboy-dev-mode') !== 'true') return;
                 // v0.63: only prune non-permanent pins (overseer-broadcast pins have permanent:true)
                 if (!p.permanent && (!p.ts || (now - p.ts) > 72 * 60 * 60 * 1000)) return; // stale: skip
-                const who = p.fromName ? (' — VIA ' + String(p.fromName).toUpperCase()) : '';
+                // The map label contains only the place. The source is shown in
+                // the selected marker's info card (not on every shared label).
                 const pm = L.marker([p.lat, p.lng], {icon: safeMarkerPhoto(p.photoThumb) ? markerPhotoIcon(p.photoThumb) : sharedIcon, zIndexOffset: 500})
-                    .bindTooltip(String(p.label || 'SHARED MARKER').toUpperCase() + who, {
+                    .bindTooltip(String(p.label || 'SHARED MARKER').toUpperCase(), {
                         permanent: false, // v0.56: labels reveal on tap only (user)
                         direction: 'bottom',
                         className: 'pip-tooltip'
@@ -5577,47 +5580,75 @@
             pipMap.fitBounds(L.latLngBounds(pts).pad(0.25));
         }
 
+        function announceWaypointResult(message, isError = false) {
+            const overseer = document.getElementById('overseer-display-modal');
+            const status = document.getElementById('overseer-marker-status');
+            if (status && overseer?.style.display === 'flex') {
+                status.textContent = message;
+                status.style.color = isError ? '#ff7777' : 'var(--pip-color)';
+                status.style.borderColor = isError ? '#ff3333' : 'var(--pip-color)';
+                status.style.display = 'block';
+            } else {
+                showNotification(message);
+            }
+        }
+        function showWaypointSaveError(message) {
+            // Notifications sit behind the 2001-z-index marker editor. Errors must
+            // appear IN this dialog, or SAVE looks completely unresponsive.
+            const feedback = document.getElementById('wp-save-feedback');
+            if (feedback) {
+                feedback.textContent = message;
+                feedback.style.display = 'block';
+                feedback.scrollIntoView?.({block: 'nearest'});
+            } else {
+                showNotification(message);
+            }
+        }
         function saveNewWaypoint() {
-            const name = document.getElementById('wp-name').value.trim();
-            if (!name) {
-                showNotification('MARKER NAME REQUIRED — NOTHING WAS SAVED.');
-                return;
+            const input = document.getElementById('wp-name');
+            const name = input?.value?.trim() || '';
+            if (!name) { showWaypointSaveError('ENTER A MARKER NAME BEFORE SAVING.'); return; }
+            if (name.length > 32) { showWaypointSaveError('MARKER NAME TOO LONG (32 CHARACTERS MAX).'); return; }
+            if (!Number.isFinite(tempWpLat) || !Number.isFinite(tempWpLng) ||
+                Math.abs(tempWpLat) > 90 || Math.abs(tempWpLng) > 180) {
+                showWaypointSaveError('MAP POSITION NOT READY — NOTHING WAS SAVED.'); return;
             }
-            if (name.length > 32) {
-                showNotification('MARKER NAME TOO LONG (32 CHARACTERS MAX).');
-                return;
-            }
-            if (!Number.isFinite(tempWpLat) || !Number.isFinite(tempWpLng)) {
-                showNotification('MAP POSITION NOT READY — NOTHING WAS SAVED.');
-                return;
-            }
-
             const wp = {
-                id: Date.now(),
-                name: name.toUpperCase(),
-                lat: tempWpLat,
-                lng: tempWpLng,
+                id: Date.now(), name: name.toUpperCase(), lat: tempWpLat, lng: tempWpLng,
                 ...(tempWpPhoto ? { photoThumb: tempWpPhoto } : {}),
-                discovered: false // By default, user-created waypoints can also be "discovered"
+                discovered: false
             };
+            // Commit the marker first. The old saveToStorage() also rewrote the
+            // unrelated inventory/profile keys and could throw before this saved.
+            // Never mutate the in-memory map or offer SHARE if storage rejects it.
+            try {
+                localStorage.setItem('pipboy-waypoints', JSON.stringify([...waypoints, wp]));
+            } catch (err) {
+                console.error('[Map] Marker could not be saved locally:', err);
+                showWaypointSaveError('MARKER NOT SAVED — THIS DEVICE STORAGE IS FULL OR UNAVAILABLE. FREE SPACE AND TRY AGAIN.');
+                return;
+            }
             waypoints.push(wp);
-
-            saveToStorage();
-            if (pipMap) renderMarkers(); // also redraw when the map lives inside Overseer display
+            // A map draw error must not prevent the share choice after a real save.
+            try { if (pipMap) renderMarkers(); }
+            catch (err) { console.error('[Map] Marker saved, map redraw failed:', err); }
             closeModals();
-            // v0.38: offer to sync the new marker out to every other Pip-Boy (opt-in per
-            // marker -- silent auto-broadcast of every scribble would flood the board)
-            // v0.63: overseers can mark broadcasts as permanent (no 72h prune)
+            // The ordinary notification modal is behind the Overseer map; report
+            // local save and later broadcast outcomes in the Overseer panel itself.
+            if (document.getElementById('overseer-display-modal')?.style.display === 'flex')
+                announceWaypointResult('MARKER SAVED ON THIS DEVICE. CHOOSE SHARE WITH EVERYONE OR KEEP PRIVATE.');
+            // Local save and global broadcast remain two independent decisions.
             const isOverseer = localStorage.getItem('pipboy-dev-mode') === 'true';
             showCustomPrompt('MARKER SAVED: "' + wp.name + '". SHARE WITH EVERYONE? BROADCAST TO ALL WASTELANDERS?', [
                 { label: 'SHARE WITH EVERYONE' + (isOverseer ? ' (PERMANENT)' : ''), action: () => broadcastWaypoint(wp, isOverseer) },
-                { label: 'KEEP PRIVATE', color: 'var(--pip-color-dim)', action: () => {} }
+                { label: 'KEEP PRIVATE', color: 'var(--pip-color-dim)',
+                    action: () => { if (isOverseer) announceWaypointResult('MARKER SAVED ON THIS DEVICE ONLY.'); } }
             ]);
         }
 
         // v0.38: push one marker onto the sharedpins/ board for every client to draw
         function broadcastWaypoint(wp, permanent) {
-            if (!window.db || navigator.onLine === false) { showNotification('NO SIGNAL -- MARKER STAYS LOCAL.'); return; }
+            if (!window.db || navigator.onLine === false) { announceWaypointResult('NO SIGNAL — MARKER STAYS ON THIS DEVICE ONLY.', true); return; }
             const key = 'p' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
             const pin = {
                 label: String(wp.name || 'MARKER').toUpperCase().substring(0, 32),
@@ -5630,8 +5661,9 @@
                 ...(safeMarkerPhoto(wp.photoThumb) ? { photoThumb: wp.photoThumb } : {})
             };
             window.firebaseSet(window.firebaseRef(window.db, 'sharedpins/' + key), pin)
-                .then(() => showNotification(permanent ? 'MARKER BROADCAST TO ALL WASTELANDERS (PERMANENT).' : 'MARKER BROADCAST TO ALL WASTELANDERS.'))
-                .catch(() => showNotification('BROADCAST FAILED -- MARKER STAYS LOCAL.'));
+                .then(() => announceWaypointResult(permanent ? 'MARKER SHARED WITH EVERYONE (PERMANENT).' : 'MARKER SHARED WITH EVERYONE.'))
+                .catch(err => { console.error('[Map] Shared marker broadcast failed:', err);
+                    announceWaypointResult('BROADCAST FAILED — MARKER STAYS ON THIS DEVICE ONLY. CHECK SIGNAL AND DATABASE RULES.', true); });
         }
 
         // v0.55: takes the id directly now (themed picker), the select is gone
@@ -11171,7 +11203,8 @@
 
         // ================= v0.126 OVERSEER DISPLAY OVERLAY =================
         let overseerRefreshInterval = null;
-        let overseerRefreshCountdown = 30;
+        const OVERSEER_REFRESH_SECONDS = 300;
+        let overseerRefreshCountdown = OVERSEER_REFRESH_SECONDS;
 
         function overseerAddMarker() {
             if (!pipMap) {
@@ -11206,6 +11239,8 @@
             }
             
             document.getElementById('overseer-display-modal').style.display = 'flex';
+            const markerStatus = document.getElementById('overseer-marker-status');
+            if (markerStatus) { markerStatus.textContent = ''; markerStatus.style.display = 'none'; }
             updateOverseerSelectedMarkerAction();
             
             // Ensure map is initialized before moving it
@@ -11242,15 +11277,25 @@
             }
             
             // Start auto-refresh
-            overseerRefreshCountdown = 30;
+            overseerRefreshCountdown = OVERSEER_REFRESH_SECONDS;
             updateOverseerDisplay();
+            // Overseer overview (including its Chronicle feed) refreshes every five
+            // minutes. Firebase listeners can still display incoming entries live.
+            if (overseerRefreshInterval) clearInterval(overseerRefreshInterval);
+            const refreshTimer = document.getElementById('overseer-refresh-timer');
+            const showRefreshCountdown = () => {
+                if (refreshTimer) refreshTimer.innerText = 'Auto-refresh: ' +
+                    Math.floor(overseerRefreshCountdown / 60) + ':' +
+                    String(overseerRefreshCountdown % 60).padStart(2, '0');
+            };
+            showRefreshCountdown();
             overseerRefreshInterval = setInterval(() => {
                 overseerRefreshCountdown--;
                 if (overseerRefreshCountdown <= 0) {
-                    overseerRefreshCountdown = 30;
+                    overseerRefreshCountdown = OVERSEER_REFRESH_SECONDS;
                     updateOverseerDisplay();
                 }
-                document.getElementById('overseer-refresh-timer').innerText = `Auto-refresh: ${overseerRefreshCountdown}s`;
+                showRefreshCountdown();
             }, 1000);
         }
 
@@ -12330,7 +12375,7 @@
         // v0.252: Generate ambient "fluff" events for live wasteland chronicle
         // v0.269: Chronicle frequency control
         let chronicleIntervalId = null;
-        let chronicleFrequency = 60000; // Default 60 seconds
+        let chronicleFrequency = 300000; // Default 5 minutes
         
         function startFluffEventGeneration() {
             console.log('[Chronicle] Starting fluff event generation...');
@@ -12370,22 +12415,14 @@
             const select = document.getElementById('chronicle-frequency');
             if (!select) return;
             
-            const newFrequency = parseInt(select.value);
+            const newFrequency = Number(select.value);
+            if (![10000, 30000, 60000, 120000, 300000].includes(newFrequency)) return;
             console.log('[Chronicle] Updating frequency to', newFrequency, 'ms');
-            
             chronicleFrequency = newFrequency;
-            
-            // Restart the interval with new frequency
-            if (chronicleIntervalId) {
-                clearInterval(chronicleIntervalId);
-            }
-            
-            chronicleIntervalId = setInterval(() => {
-                if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
-                    console.log('[Chronicle] Overseer display open, generating fluff events...');
-                    generateFluffEvents();
-                }
-            }, chronicleFrequency);
+            // Preserve the same client-only schedule whether the Overseer DISPLAY
+            // is visible or closed (an open developer-mode app is still required).
+            if (chronicleIntervalId) clearInterval(chronicleIntervalId);
+            chronicleIntervalId = setInterval(generateFluffEvents, chronicleFrequency);
             
             const frequencyLabels = {
                 10000: '10 seconds',
