@@ -1324,6 +1324,11 @@
         updateClock();
 
         // UI & Setup
+        function updateOverseerFooterButton() {
+            const button = document.getElementById('overseer-display-footer-btn');
+            if (button) button.style.display = localStorage.getItem('pipboy-dev-mode') === 'true'
+                ? 'inline-block' : 'none';
+        }
         function switchMainTab(tabId) {
             // v0.145: Play tab switch sound
             playSound('tabSwitch');
@@ -1337,6 +1342,7 @@
             document.getElementById('tab-' + tabId).classList.add('active');
 
             const isDev = localStorage.getItem('pipboy-dev-mode') === 'true';
+            updateOverseerFooterButton();
 
             // Button Visibility Logic (v0.53: INV retired; dev console lives under STAT > STATS)
             const aib = document.getElementById('add-item-btn'); if (aib) aib.style.display = 'none';
@@ -1383,6 +1389,7 @@
             });
             
             const isDev = localStorage.getItem('pipboy-dev-mode') === 'true';
+            updateOverseerFooterButton();
             
             if (parentTab === 'inv') {
                 currentInvTab = subTabId; // v0.53: INV tab retired; branch kept inert for stale callers
@@ -6375,6 +6382,7 @@
         // v0.48: the actual lockout — lives behind the PIN via confirmAuth('TOGGLE_DEV_OFF')
         function doDevDisable() {
             localStorage.setItem('pipboy-dev-mode', 'false');
+            updateOverseerFooterButton();
             // Manually hide elements that should disappear immediately (null-guarded: some
             // of these ids only exist on certain layouts — never let one 404 kill the rest)
             ['add-item-btn', 'add-quest-btn', 'faction-controls', 'dev-add-marker-btn',
@@ -11087,6 +11095,7 @@
         }
 
 
+        updateOverseerFooterButton(); // Restore the Overseer footer shortcut on every tab after a reload.
         renderMailBadge();
         recomputeSpecial(); // v0.58: apply any saved mutations to S.P.E.C.I.A.L. before first render
         hydrateLastFix(); // v0.56: self-dot from the persisted fix, even before GPS arms

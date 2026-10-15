@@ -183,7 +183,13 @@
             display: flex; justify-content: space-between; align-items: center;
             font-size: 1rem; position: relative; z-index: 10;
         }
-        .footer-action-container { flex-grow: 1; text-align: center; }
+        .footer-action-container { flex-grow: 1; text-align: center; min-width: 0; }
+        /* The Overseer shortcut lives in the shared footer, not in STAT-only controls. */
+        #overseer-display-footer-btn { max-width: 100%; white-space: nowrap; }
+        @media (max-width: 600px) {
+            .footer-action-container { margin: 0 5px !important; }
+            #overseer-display-footer-btn { font-size: 1rem; padding: 7px 5px !important; }
+        }
 
         .pip-btn {
             background: transparent; border: 1px solid var(--pip-color); color: var(--pip-color);

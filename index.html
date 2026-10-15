@@ -61,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.315</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.316</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -295,7 +295,7 @@
                 </div>
             </div>
 
-            <!-- NUKA PLANNER: test Wed 14 + festival 22–24 Oct 2226 (real dates 2026, Perth time) -->
+            <!-- NUKA PLANNER: festival 22–24 Oct 2226 (real dates 2026, Perth time) -->
             <div id="sub-data-planner" class="sub-tab-content">
                 <div class="planner-header">
                     <div>
@@ -513,15 +513,14 @@
             </div>
             <!-- v0.84: map add/remove marker buttons removed from footer (use long-press map or split-controls sidebar) -->
             <!-- v0.84: map camera controls moved to overlay on the map itself -->
-            <div id="dev-controls" style="display: none; justify-content: center; gap: 10px;">
+            <!-- Independent of STAT/STATS controls: available in the footer of every main tab while Overseer mode is on. -->
+            <button id="overseer-display-footer-btn" type="button" class="theme-btn" onclick="openOverseerDisplay()" style="display:none;border-color:#ffb642;color:#ffb642;padding:7px 12px;min-height:38px;">OVERSEER DISPLAY</button>
+            <div id="dev-controls" style="display: none; justify-content: center; gap: 10px; flex-wrap:wrap;">
                 <button class="theme-btn" onclick="triggerDevReset()" style="border-color: #ff3333; color: #ff3333;">FACTORY RESET</button>
                 <button class="theme-btn" onclick="toggleDevMode()" style="border-color: #42b6ff; color: #42b6ff;">TOGGLE OVERSEER</button>
-                <button class="theme-btn" onclick="openOverseerDisplay()" style="border-color: #ffb642; color: #ffb642;">OVERSEER DISPLAY</button>
             </div>
         </div>
 
-        <div style="width: 80px; text-align: right; display: flex; flex-direction: column; justify-content: center;">
-        </div>
     </div>
 
     <!-- MY DATACARD MODAL (v0.31) -->
@@ -592,7 +591,7 @@
     <div id="planner-editor-modal" class="modal-overlay" style="z-index: 125; position: fixed;">
         <div class="modal-content" style="max-height:90vh; overflow-y:auto;">
             <h3 id="planner-editor-heading">ADD EVENT</h3>
-            <p style="opacity:0.75;">WED TEST 06:00–18:00 · THU–SAT 10:00–24:00 · AWST · YEAR 2226</p>
+            <p style="opacity:0.75;">THU–SAT 10:00–24:00 · AWST · YEAR 2226</p>
             <div class="form-group"><label>DAY</label><button class="pip-btn" id="planner-edit-day" onclick="choosePlannerDay()" style="width:100%;">SELECT DAY</button></div>
             <div class="form-group"><label>TITLE</label><input id="planner-edit-title" class="pip-input vk-target" readonly onclick="openVk('planner-edit-title')" maxlength="100" placeholder="EVENT TITLE"></div>
             <div class="form-group"><label>ONE-HOUR TIMESLOT (AWST)</label><button class="pip-btn" id="planner-edit-slot" onclick="choosePlannerSlot()" style="width:100%;">SELECT SLOT</button></div>
@@ -994,7 +993,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.315</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.316</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1025,7 +1024,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.315</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.316</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
