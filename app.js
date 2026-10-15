@@ -5175,7 +5175,9 @@
                         if (uid === myUid) continue; // Don't draw ourselves twice
 
                         const p = data[uid];
-                        if (!isLiveWastelander(uid, p)) continue; // live real beacons only
+                        const now = Date.now();
+                        if (!isRecentWastelander(uid, p, now)) continue; // genuine, <=24h
+                        const isLive = isLiveWastelander(uid, p, now);
 
                         // v0.56: one rotten beacon record could throw mid-loop and black out EVERY
                         // dot on this unit (roster/zones kept rendering) -- guard per-beacon
@@ -5187,15 +5189,15 @@
                         const ageInMinutes = Math.floor((Date.now() - p.timestamp) / 60000);
                         let nameLabel = String(p.name || 'WASTELANDER');
 
-                        // If the data is older than 5 minutes, mark them as 'Last Known Location'
-                        if (ageInMinutes > 5) {
+                        // Cold positions are stale last-known intel, never live users.
+                        if (!isLive) {
                             nameLabel += ` (LKL: ${ageInMinutes}m ago)`;
                         } else liveN++;
                         drawnN++;
 
                         // v0.179: Use avatar as marker icon if available
                         let markerIcon;
-                        if (p.avatar && ageInMinutes <= 5) {
+                        if (p.avatar && isLive) {
                             // Live player with avatar - show circular avatar
                             markerIcon = L.divIcon({
                                 className: 'custom-pip-marker',
@@ -5205,7 +5207,7 @@
                                 iconSize: [32, 32],
                                 iconAnchor: [16, 16]
                             });
-                        } else if (p.avatar && ageInMinutes > 5) {
+                        } else if (p.avatar && !isLive) {
                             // Cold player with avatar - show faded circular avatar
                             markerIcon = L.divIcon({
                                 className: 'custom-pip-marker',
@@ -5217,7 +5219,7 @@
                             });
                         } else {
                             // No avatar - use default dot
-                            markerIcon = ageInMinutes > 5 ? otherPlayerIconCold : otherPlayerIcon;
+                            markerIcon = isLive ? otherPlayerIcon : otherPlayerIconCold;
                         }
 
                         try {
@@ -5407,12 +5409,21 @@
         function isDemoWastelander(uid, record) {
             return /^demo-player-(?:[1-9]|10)$/.test(uid) || record?.isDemo === true;
         }
-        function isLiveWastelander(uid, record, now = Date.now()) {
-            return !isDemoWastelander(uid, record) && record &&
-                typeof record.timestamp === 'number' && record.timestamp <= now + 60000 &&
-                now - record.timestamp <= 300000 &&
+        function isRealWastelander(uid, record, now = Date.now()) {
+            // Visibility of a genuine historical beacon is NOT the same as being live.
+            return !isDemoWastelander(uid, record) && !!record &&
+                typeof record.timestamp === 'number' && record.timestamp > 0 &&
+                record.timestamp <= now + 60000 &&
                 typeof record.lat === 'number' && typeof record.lng === 'number' &&
-                Number.isFinite(record.lat) && Number.isFinite(record.lng);
+                Number.isFinite(record.lat) && Number.isFinite(record.lng) &&
+                Math.abs(record.lat) <= 90 && Math.abs(record.lng) <= 180;
+        }
+        function isLiveWastelander(uid, record, now = Date.now()) {
+            return isRealWastelander(uid, record, now) && now - record.timestamp <= 300000;
+        }
+        function isRecentWastelander(uid, record, now = Date.now()) {
+            // Cold map ghosts expire after 24h; the COLD roster remains historical.
+            return isRealWastelander(uid, record, now) && now - record.timestamp <= 86400000;
         }
 
         // v0.63: render scrollable list of live wastelanders below map
@@ -5427,15 +5438,12 @@
             Object.keys(lastKnownBeaconData || {}).forEach(uid => {
                 if (uid === myUid) return; // skip self
                 const b = lastKnownBeaconData[uid];
-                if (!isLiveWastelander(uid, b, now)) return;
+                if (!isRealWastelander(uid, b, now)) return; // keep cold genuine beacons
                 const ageMin = Math.floor((now - b.timestamp) / 60000);
                 const dist = (myLastLat !== null && typeof b.lat === 'number') ? getDistance(myLastLat, myLastLng, b.lat, b.lng) : null;
                 const entry = { uid, name: b.name || 'UNKNOWN', lat: b.lat, lng: b.lng, ageMin, dist };
-                if (ageMin <= 5) {
-                    live.push(entry);
-                } else {
-                    cold.push(entry);
-                }
+                if (isLiveWastelander(uid, b, now)) live.push(entry);
+                else cold.push(entry);
             });
             // Sort live by distance (closest first), cold by age (most recent first)
             const sortByDist = (a, b) => {
@@ -8376,7 +8384,7 @@
             const cands = Object.keys(lastKnownBeaconData).filter(uid => {
                 if (uid === myMailUid || pariahMarks[uid]) return false;
                 const b = lastKnownBeaconData[uid];
-                return b && b.timestamp && (now - b.timestamp) <= 5 * 60 * 1000;
+                return isLiveWastelander(uid, b, now);
             });
             html += '<h3 style="border-bottom:1px dashed var(--pip-color-dim); padding-bottom:5px; margin:15px 0 10px; opacity:0.8;">LIVE SIGNALS (5MIN)</h3>';
             if (!cands.length) {
@@ -8405,7 +8413,7 @@
             const coldWastelanders = Object.keys(lastKnownBeaconData).filter(uid => {
                 if (uid === myMailUid) return false;
                 const b = lastKnownBeaconData[uid];
-                return b && b.timestamp && (now - b.timestamp) > 3 * 24 * 60 * 60 * 1000; // older than 3 days
+                return isRealWastelander(uid, b, now) && (now - b.timestamp) > 3 * 24 * 60 * 60 * 1000; // genuine, >3 days
             });
             html += '<h3 style="border-bottom:1px dashed var(--pip-color-dim); padding-bottom:5px; margin:15px 0 10px; opacity:0.8;">COLD WASTELANDERS (>3 DAYS)</h3>';
             if (!coldWastelanders.length) {
@@ -11378,7 +11386,7 @@
             // Initialize stats for all wastelanders
             Object.keys(wastelanders).forEach(uid => {
                 const w = wastelanders[uid];
-                if (!isLiveWastelander(uid, w)) return;
+                if (!isRealWastelander(uid, w)) return; // All real users, including cold
                 stats[uid] = {
                     uid: uid,
                     name: w.name || 'UNKNOWN',
@@ -11386,7 +11394,7 @@
                     rads: w.rads || 0,
                     radsLifetime: w.radsLifetime || 0, // v0.177: Use lifetime rads
                     mutations: w.mutations || 0, // v0.177: Handle undefined
-                    lastSeen: w.lastSeen || 0,
+                    lastSeen: w.timestamp || w.lastSeen || 0,
                     questsCompleted: 0,
                     bountiesClaimed: 0,
                     bountiesSurvived: 0,
@@ -11550,6 +11558,11 @@
                         statusColor = '#5fc98e';
                         statusText = '✚ HEALING';
                         glowEffect = 'box-shadow: 0 0 15px #5fc98e, 0 0 30px #5fc98e80;';
+                    }
+                    if (Date.now() - p.lastSeen > 300000) {
+                        statusColor = 'var(--pip-color-dim)';
+                        statusText = (isDead ? 'DEAD · ' : '') + 'COLD — LAST SEEN ' + Math.floor((Date.now() - p.lastSeen) / 60000) + 'M AGO';
+                        glowEffect = ''; // don't present stale statuses as current activity
                     }
                     
                     // Get avatar from player data or wastelanders
