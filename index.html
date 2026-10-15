@@ -61,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.314</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.315</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -300,13 +300,12 @@
                 <div class="planner-header">
                     <div>
                         <h3>☢ NUKA PLANNER</h3>
-                        <p>TEST WED 14 OCT 06:00–18:00 · THU–SAT 22–24 OCT 10:00–24:00 · AWST</p>
+                        <p>THU–SAT 22–24 OCT · 10:00–24:00 AWST</p>
                     </div>
                     <button class="pip-btn" id="planner-add-btn" onclick="openPlannerEditor()" style="display:none;">[+ EVENT]</button>
                 </div>
 
                 <div id="planner-status" role="status" style="opacity:0.7; margin:8px 0;">CONNECTING TO EVENT SCHEDULE...</div>
-                <button class="pip-btn" id="planner-archive-btn" onclick="viewPlannerArchive()" style="display:none; margin-bottom:8px;">[PREVIOUS-FORMAT EVENTS]</button>
                 <div id="planner-grid-wrap" class="planner-grid-wrap"><div id="planner-grid" class="planner-grid"></div></div>
             </div>
 
@@ -995,7 +994,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.314</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.315</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1026,7 +1025,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.314</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.315</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
@@ -1073,9 +1072,9 @@
 </html>
     <!-- OVERSEER DISPLAY OVERLAY (v0.225) -->
     <div id="overseer-display-modal" class="modal-overlay" style="z-index: 2000; background: var(--pip-bg); display: none;">
-        <div style="width: 100%; height: 100vh; display: flex; flex-direction: column; padding: 10px;">
+        <div class="overseer-shell" style="width: 100%; height: 100vh; display: flex; flex-direction: column; padding: 10px;">
             <!-- Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+            <div class="overseer-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
                 <h1 style="margin: 0; font-size: 2.5rem; color: var(--pip-color); text-shadow: 0 0 20px var(--pip-color), 0 0 40px var(--pip-color); letter-spacing: 3px; font-weight: bold;">☢ POX ECLIPSE 2026 ☢</h1>
                 <div style="display: flex; gap: 15px; align-items: center;">
                     <button class="pip-btn" onclick="cycleTheme()" style="padding: 8px 15px; border-style: dashed;">🎨 THEME</button>
@@ -1085,9 +1084,9 @@
             </div>
             
             <!-- Main Content -->
-            <div style="display: flex; gap: 10px; flex-grow: 1; min-height: 0;">
+            <div class="overseer-main" style="display: flex; gap: 10px; flex-grow: 1; min-height: 0;">
                 <!-- Left Panel: Player List + Chronicle (50%) -->
-                <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+                <div class="overseer-left" style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
                     <!-- Controls -->
                     <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap;">
                         <select id="overseer-filter" class="pip-input" style="flex: 1; min-width: 150px;" onchange="updateOverseerDisplay()">
@@ -1113,7 +1112,6 @@
                         </select>
                     </div>
                     
-                    <button class="theme-btn" onclick="cleanupDemoWastelanders()" style="border-color:#ff3333;color:#ff3333;margin-bottom:6px;">[BACK UP & REMOVE DEMO PLAYERS]</button>
                     <!-- Top Half: Player List -->
                     <div id="overseer-player-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--pip-color); padding: 10px; margin-bottom: 10px;">
                         <p style="text-align: center; opacity: 0.5;">Loading players...</p>
@@ -1139,7 +1137,7 @@
                 </div>
                 
                 <!-- Right Panel: Map (50%) - Reuses main map -->
-                <div style="flex: 1; display: flex; flex-direction: column; min-width: 300px;">
+                <div class="overseer-right" style="flex: 1; display: flex; flex-direction: column; min-width: 300px;">
                     <!-- Map Controls -->
                     <div style="display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap;">
                         <p style="font-size: 0.75rem; opacity: 0.7; margin: 0; flex: 1;">[CENTER DOT = MARKER POSITION]</p>
@@ -1148,6 +1146,20 @@
                         <button class="theme-btn" id="overseer-remove-selected" onclick="removeOverseerSelectedMarker()" style="display:none;padding: 4px 8px; font-size: 0.75rem; margin: 0;"></button>
                     </div>
                     <div id="overseer-marker-status" role="status" aria-live="polite" style="display:none;border:1px solid var(--pip-color);padding:5px;margin-bottom:5px;font-size:0.85rem;"></div>
+                    <!-- Direct Overseer marker editor: no nested 2001-z-index modal or
+                         custom keyboard between the user's tap and the SAVE handler. -->
+                    <div id="overseer-marker-editor" style="display:none;border:1px solid var(--pip-color);padding:10px;margin-bottom:6px;max-height:42vh;overflow-y:auto;flex-shrink:0;">
+                        <label for="overseer-marker-name" style="display:block;">MARKER NAME · CENTER DOT POSITION</label>
+                        <input id="overseer-marker-name" type="text" class="pip-input" maxlength="32" autocomplete="off" placeholder="e.g. VIP Bar" style="box-sizing:border-box;">
+                        <button type="button" class="theme-btn" onclick="pickWaypointPhoto()" style="margin-top:7px;">[OPTIONAL PHOTO FROM DATABANK]</button>
+                        <img id="overseer-photo-preview" alt="Selected marker thumbnail" style="display:none;width:48px;height:48px;object-fit:cover;border:5px solid #ffb642;border-radius:50%;box-sizing:border-box;margin:8px auto;">
+                        <button id="overseer-photo-clear" type="button" class="theme-btn" onclick="clearWaypointPhoto()" style="display:none;">REMOVE SELECTED PHOTO</button>
+                        <div id="overseer-marker-error" role="alert" aria-live="assertive" style="display:none;color:#ff7777;border:1px solid #ff3333;padding:8px;margin:7px 0;"></div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                            <button id="overseer-marker-save" type="button" class="theme-btn" onclick="saveOverseerMarker()" style="padding:9px;flex:1;border-width:2px;">SAVE MARKER</button>
+                            <button type="button" class="theme-btn" onclick="closeOverseerMarkerEditor()" style="padding:9px;">CANCEL</button>
+                        </div>
+                    </div>
                     <div style="position: relative; flex-grow: 1; min-height: 400px;">
                         <div id="overseer-map-container" style="border: 1px solid var(--pip-color); position: relative; width: 100%; height: 100%;">
                             <!-- Main map will be moved here when overseer display opens -->

@@ -1426,7 +1426,6 @@
         // Display year 2226; real schedule keys are 2026 dates in Australia/Perth.
         // Never construct a Date in year 2226 for event logic.
         const plannerDays = [
-            { key: '2026-10-14', label: 'TEST DAY · WED 14/10/2226' },
             { key: '2026-10-22', label: 'THU 22/10/2226' },
             { key: '2026-10-23', label: 'FRI 23/10/2226' },
             { key: '2026-10-24', label: 'SAT 24/10/2226' }
@@ -1579,9 +1578,7 @@
         }
 
         const plannerFestivalSlots = Array.from({ length: 14 }, (_, i) => 600 + i * 60);
-        const plannerTestSlots = Array.from({ length: 12 }, (_, i) => 360 + i * 60);
         function plannerSlotsForDay(day) {
-            if (day === '2026-10-14') return plannerTestSlots;
             return plannerDays.some(d => d.key === day) ? plannerFestivalSlots : [];
         }
         function plannerOnBoard(day, event) {
@@ -1614,12 +1611,6 @@
             if (!board || !status) return;
             const add = document.getElementById('planner-add-btn');
             if (add) add.style.display = plannerIsOverseer() ? 'inline-block' : 'none';
-            const archive = plannerArchive();
-            const archiveButton = document.getElementById('planner-archive-btn');
-            if (archiveButton) {
-                archiveButton.style.display = archive.length ? 'inline-block' : 'none';
-                archiveButton.textContent = `[${archive.length} PREVIOUS-FORMAT EVENT${archive.length === 1 ? '' : 'S'}]`;
-            }
             let count = 0;
             board.replaceChildren();
             const columns = document.createElement('div');
@@ -1668,18 +1659,7 @@
                 });
             });
             status.textContent = plannerListenError || (!plannerLoaded ? 'CONNECTING TO EVENT SCHEDULE...'
-                : `${count} EVENT${count === 1 ? '' : 'S'} · WED TEST 06:00–18:00 / THU–SAT 10:00–24:00 AWST` +
-                  (archive.length ? ` · ${archive.length} PREVIOUS-FORMAT EVENT${archive.length === 1 ? '' : 'S'} RETAINED` : ''));
-        }
-
-        function viewPlannerArchive() {
-            const archive = plannerArchive();
-            if (!archive.length) { showNotification('NO PREVIOUS-FORMAT EVENTS.'); return; }
-            showCustomPrompt('PREVIOUS-FORMAT EVENTS · PRESERVED OUTSIDE THE NEW BOARD',
-                archive.map(({ day, id, event }) => ({
-                    label: `${day} ${plannerClock(event.startMinute)} ${String(event.title || 'UNTITLED').slice(0, 50)}`,
-                    action: () => openPlannerEventDetails(day, id)
-                })));
+                : `${count} EVENT${count === 1 ? '' : 'S'} · THU–SAT 10:00–24:00 AWST`);
         }
 
         function openPlannerEventDetails(day, id) {
@@ -4667,20 +4647,26 @@
         }
 
         function updateWaypointPhotoPreview() {
-            const img = document.getElementById('wp-photo-preview');
-            if (!img) return;
-            img.style.display = tempWpPhoto ? 'block' : 'none';
-            const clear = document.getElementById('wp-photo-clear');
-            if (clear) clear.style.display = tempWpPhoto ? 'block' : 'none';
-            if (tempWpPhoto) img.src = tempWpPhoto;
-            else img.removeAttribute('src');
+            for (const [imageId, clearId] of [['wp-photo-preview','wp-photo-clear'],
+                                               ['overseer-photo-preview','overseer-photo-clear']]) {
+                const img = document.getElementById(imageId);
+                if (img) {
+                    img.style.display = tempWpPhoto ? 'block' : 'none';
+                    if (tempWpPhoto) img.src = tempWpPhoto; else img.removeAttribute('src');
+                }
+                const clear = document.getElementById(clearId);
+                if (clear) clear.style.display = tempWpPhoto ? 'block' : 'none';
+            }
         }
         function clearWaypointPhoto() {
             tempWpPhoto = null; updateWaypointPhotoPreview();
         }
         function pickWaypointPhoto() {
-            if (!photoArchiveReady) { showNotification('DATABANK LOADING — TRY AGAIN.'); return; }
-            if (!photoArchive.length) { showNotification('DATABANK EMPTY — TAKE A PHOTO FIRST.'); return; }
+            const direct = document.getElementById('overseer-marker-editor')?.style.display === 'block';
+            const photoError = message => direct
+                ? showWaypointSaveError(message, 'overseer-marker-error') : showNotification(message);
+            if (!photoArchiveReady) { photoError('DATABANK LOADING — TRY AGAIN.'); return; }
+            if (!photoArchive.length) { photoError('DATABANK EMPTY — TAKE A PHOTO FIRST.'); return; }
             photoPickMode = 'marker';
             document.getElementById('pp-title').innerText = 'MARKER PHOTO: PICK FROM DATABANK';
             const grid = document.getElementById('pp-grid');
@@ -5600,10 +5586,10 @@
                 showNotification(message);
             }
         }
-        function showWaypointSaveError(message) {
+        function showWaypointSaveError(message, targetId = 'wp-save-feedback') {
             // Notifications sit behind the 2001-z-index marker editor. Errors must
             // appear IN this dialog, or SAVE looks completely unresponsive.
-            const feedback = document.getElementById('wp-save-feedback');
+            const feedback = document.getElementById(targetId);
             if (feedback) {
                 feedback.textContent = message;
                 feedback.style.display = 'block';
@@ -5612,14 +5598,14 @@
                 showNotification(message);
             }
         }
-        function saveNewWaypoint() {
-            const input = document.getElementById('wp-name');
+        function saveNewWaypoint(inputId = 'wp-name', errorId = 'wp-save-feedback') {
+            const input = document.getElementById(inputId);
             const name = input?.value?.trim() || '';
-            if (!name) { showWaypointSaveError('ENTER A MARKER NAME BEFORE SAVING.'); return; }
-            if (name.length > 32) { showWaypointSaveError('MARKER NAME TOO LONG (32 CHARACTERS MAX).'); return; }
+            if (!name) { showWaypointSaveError('ENTER A MARKER NAME BEFORE SAVING.', errorId); return false; }
+            if (name.length > 32) { showWaypointSaveError('MARKER NAME TOO LONG (32 CHARACTERS MAX).', errorId); return false; }
             if (!Number.isFinite(tempWpLat) || !Number.isFinite(tempWpLng) ||
                 Math.abs(tempWpLat) > 90 || Math.abs(tempWpLng) > 180) {
-                showWaypointSaveError('MAP POSITION NOT READY — NOTHING WAS SAVED.'); return;
+                showWaypointSaveError('MAP POSITION NOT READY — NOTHING WAS SAVED.', errorId); return false;
             }
             const wp = {
                 id: Date.now(), name: name.toUpperCase(), lat: tempWpLat, lng: tempWpLng,
@@ -5633,13 +5619,14 @@
                 localStorage.setItem('pipboy-waypoints', JSON.stringify([...waypoints, wp]));
             } catch (err) {
                 console.error('[Map] Marker could not be saved locally:', err);
-                showWaypointSaveError('MARKER NOT SAVED — THIS DEVICE STORAGE IS FULL OR UNAVAILABLE. FREE SPACE AND TRY AGAIN.');
-                return;
+                showWaypointSaveError('MARKER NOT SAVED — THIS DEVICE STORAGE IS FULL OR UNAVAILABLE. FREE SPACE AND TRY AGAIN.', errorId);
+                return false;
             }
             waypoints.push(wp);
             // A map draw error must not prevent the share choice after a real save.
             try { if (pipMap) renderMarkers(); }
             catch (err) { console.error('[Map] Marker saved, map redraw failed:', err); }
+            if (inputId === 'overseer-marker-name') closeOverseerMarkerEditor();
             closeModals();
             // The ordinary notification modal is behind the Overseer map; report
             // local save and later broadcast outcomes in the Overseer panel itself.
@@ -5652,6 +5639,7 @@
                 { label: 'KEEP PRIVATE', color: 'var(--pip-color-dim)',
                     action: () => { if (isOverseer) announceWaypointResult('MARKER SAVED ON THIS DEVICE ONLY.'); } }
             ]);
+            return true;
         }
 
         // v0.38: push one marker onto the sharedpins/ board for every client to draw
@@ -9519,7 +9507,10 @@
                 document.getElementById('photo-pick-modal').style.zIndex = '';
                 const snap = document.getElementById('pp-snap-btn'); if (snap) snap.style.display = '';
                 photoPickMode = 'send';
-                document.getElementById('add-waypoint-modal').style.display = 'flex';
+                // The Overseer has its own direct editor; do not resurrect the
+                // ordinary add-waypoint overlay when returning from the photobank.
+                if (document.getElementById('overseer-marker-editor')?.style.display !== 'block')
+                    document.getElementById('add-waypoint-modal').style.display = 'flex';
                 setWaypointPhotoFromEntry(entry);
                 return;
             }
@@ -11215,13 +11206,31 @@
         let overseerRefreshCountdown = OVERSEER_REFRESH_SECONDS;
 
         function overseerAddMarker() {
-            if (!pipMap) {
-                showNotification('MAP NOT INITIALIZED');
-                return;
-            }
-            // Get center of map (where the center dot is)
+            if (!pipMap) { announceWaypointResult('MAP NOT READY — TRY AGAIN AFTER THE MAP LOADS.', true); return; }
             const center = pipMap.getCenter();
-            openAddWaypointModal(center.lat, center.lng);
+            tempWpLat = center.lat; tempWpLng = center.lng;
+            tempWpPhoto = null; updateWaypointPhotoPreview();
+            const editor = document.getElementById('overseer-marker-editor');
+            const input = document.getElementById('overseer-marker-name');
+            const error = document.getElementById('overseer-marker-error');
+            if (!editor || !input || !error) { announceWaypointResult('MARKER EDITOR UNAVAILABLE — RELOAD THE APP.', true); return; }
+            input.value = '';
+            error.textContent = ''; error.style.display = 'none';
+            editor.style.display = 'block';
+            // Don't auto-open the native keyboard; allow the user to see the map
+            // center first. This input deliberately uses the device keyboard.
+            if (pipMap.invalidateSize) setTimeout(() => pipMap.invalidateSize(), 0);
+        }
+        function closeOverseerMarkerEditor() {
+            const editor = document.getElementById('overseer-marker-editor');
+            if (editor) editor.style.display = 'none';
+            tempWpPhoto = null; updateWaypointPhotoPreview();
+            if (pipMap?.invalidateSize) setTimeout(() => pipMap.invalidateSize(), 0);
+        }
+        function saveOverseerMarker() {
+            const editor = document.getElementById('overseer-marker-editor');
+            if (editor?.style.display !== 'block') return false;
+            return saveNewWaypoint('overseer-marker-name', 'overseer-marker-error');
         }
 
         function overseerCenterMap() {
@@ -11308,6 +11317,7 @@
         }
 
         function closeOverseerDisplay() {
+            closeOverseerMarkerEditor();
             document.getElementById('overseer-display-modal').style.display = 'none';
             selectedLocalWaypointId = null; updateOverseerSelectedMarkerAction();
             if (overseerRefreshInterval) {
@@ -12499,47 +12509,6 @@
                     .catch(err => console.warn('[Chronicle] Gathering write failed:', err));
             });
             return included;
-        }
-
-        async function cleanupDemoWastelanders() {
-            if (localStorage.getItem('pipboy-dev-mode') !== 'true' || !window.db) return;
-            try {
-                const snapshot = await window.firebaseGet(window.firebaseRef(window.db, 'wastelanders'));
-                const candidates = Object.entries(snapshot.val() || {}).filter(([uid, w]) =>
-                    /^demo-player-(?:[1-9]|10)$/.test(uid) && w?.isDemo === true);
-                if (!candidates.length) { showNotification('NO DEMO-PLAYER RECORDS FOUND.'); return; }
-                showCustomPrompt('BACK UP ' + candidates.length + ' VERIFIED DEMO PLAYERS? ONLY demo-player-1..10 WITH isDemo:true. NOTHING IS DELETED YET.', [
-                    {label: 'DOWNLOAD JSON BACKUP', action: () => {
-                        try {
-                            const blob = new Blob([JSON.stringify(Object.fromEntries(candidates), null, 2)], {type:'application/json'});
-                            const url = URL.createObjectURL(blob);
-                            const link = document.createElement('a'); link.href = url;
-                            link.download = 'pox-demo-player-backup-' + Date.now() + '.json';
-                            document.body.appendChild(link); link.click(); link.remove();
-                            setTimeout(() => URL.revokeObjectURL(url), 30000);
-                            showCustomPrompt('CHECK YOUR DOWNLOADS NOW. DID THE JSON BACKUP ARRIVE? ONLY CONFIRM REMOVAL IF YOU HAVE THE FILE. DELETION CANNOT BE UNDONE.', [
-                                {label:'YES, I HAVE THE BACKUP — REMOVE DEMO PLAYERS', color:'#ff3333', action: async () => {
-                                    try {
-                                        // Recheck each record atomically at deletion time.
-                                        let removed = 0;
-                                        for (const [uid] of candidates) {
-                                            const ref = window.firebaseRef(window.db, 'wastelanders/' + uid);
-                                            const result = await window.firebaseRunTransaction(ref, current =>
-                                                current?.isDemo === true && /^demo-player-(?:[1-9]|10)$/.test(uid) ? null : undefined,
-                                                {applyLocally: false});
-                                            if (result.committed) removed++;
-                                        }
-                                        showNotification('REMOVED ' + removed + ' DEMO PLAYERS.');
-                                        updateOverseerDisplay();
-                                    } catch (err) { showNotification('DEMO CLEANUP INCOMPLETE — CHECK SIGNAL.'); console.error(err); }
-                                }},
-                                {label:'NO / CANCEL', action:()=>{}}
-                            ]);
-                        } catch (err) { showNotification('BACKUP DOWNLOAD FAILED — NOTHING REMOVED.'); console.error(err); }
-                    }},
-                    {label: 'CANCEL', action: () => {}}
-                ]);
-            } catch (err) { showNotification('COULD NOT READ DEMO PLAYERS.'); }
         }
 
         function generateFluffEvents() {

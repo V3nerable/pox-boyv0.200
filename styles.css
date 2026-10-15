@@ -954,3 +954,17 @@ body.chronicle-radiation {
 .planner-board-columns { display:grid; grid-template-columns:minmax(90px, 120px) minmax(0,1fr); gap:0; font-size:.9rem; color:#ffb642; border:1px solid var(--pip-color-dim); }
 .planner-board-columns span { padding:5px; }
 .planner-board-columns span:first-child { border-right:1px solid var(--pip-color-dim); }
+
+/* v0.315: Overseer map and controls cannot share a 390px-wide row. Stacking the
+   map above the roster keeps SAVE MARKER unobstructed on real mobile screens. */
+@media (max-width: 700px) {
+    #overseer-display-modal { padding: 4px !important; overflow: hidden; }
+    #overseer-display-modal .overseer-shell { box-sizing: border-box; height: 100dvh !important; min-height: 0; overflow: hidden; padding: 6px !important; }
+    #overseer-display-modal .overseer-header { gap: 5px; flex-wrap: wrap; }
+    #overseer-display-modal .overseer-header h1 { font-size: 1.25rem !important; letter-spacing: 1px !important; }
+    #overseer-display-modal .overseer-header .pip-btn { width: auto; margin-top: 0; }
+    #overseer-display-modal .overseer-main { flex-direction: column !important; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+    #overseer-display-modal .overseer-right { order: 0; width: 100%; flex: none !important; min-width: 0 !important; min-height: 520px; }
+    #overseer-display-modal .overseer-left { order: 1; width: 100%; flex: none !important; min-width: 0 !important; min-height: 360px; }
+    #overseer-display-modal #map-container { height: 100% !important; min-height: 0 !important; }
+}
