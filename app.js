@@ -4638,6 +4638,7 @@
         function openAddModal() { document.getElementById('add-name').value = ''; document.getElementById('add-modal').style.display = 'flex'; }
         let tempWpLat = null;
         let tempWpLng = null;
+        let tempWpPhoto = null;
         function openAddWaypointModal(lat, lng) {
             if ((lat === undefined || lng === undefined) && !pipMap) {
                 showNotification('MAP NOT READY — OPEN THE MAP AND TRY AGAIN.');
@@ -4649,6 +4650,8 @@
             suspendVisibleModals('add-waypoint-modal', 'add-waypoint', ['overseer-display-modal']);
             
             document.getElementById('wp-name').value = '';
+            tempWpPhoto = null;
+            updateWaypointPhotoPreview();
             if (lat !== undefined && lng !== undefined) {
                 tempWpLat = lat; tempWpLng = lng;
             } else if (pipMap) {
@@ -4659,6 +4662,60 @@
             const oz = document.getElementById('wp-overseer-zones');
             if (oz) oz.style.display = (localStorage.getItem('pipboy-dev-mode') === 'true') ? 'block' : 'none';
             document.getElementById('add-waypoint-modal').style.display = 'flex';
+        }
+
+        function updateWaypointPhotoPreview() {
+            const img = document.getElementById('wp-photo-preview');
+            if (!img) return;
+            img.style.display = tempWpPhoto ? 'block' : 'none';
+            const clear = document.getElementById('wp-photo-clear');
+            if (clear) clear.style.display = tempWpPhoto ? 'block' : 'none';
+            if (tempWpPhoto) img.src = tempWpPhoto;
+            else img.removeAttribute('src');
+        }
+        function clearWaypointPhoto() {
+            tempWpPhoto = null; updateWaypointPhotoPreview();
+        }
+        function pickWaypointPhoto() {
+            if (!photoArchiveReady) { showNotification('DATABANK LOADING — TRY AGAIN.'); return; }
+            if (!photoArchive.length) { showNotification('DATABANK EMPTY — TAKE A PHOTO FIRST.'); return; }
+            photoPickMode = 'marker';
+            document.getElementById('pp-title').innerText = 'MARKER PHOTO: PICK FROM DATABANK';
+            const grid = document.getElementById('pp-grid');
+            grid.replaceChildren();
+            const tiles = document.createElement('div'); tiles.className = 'photo-tile-grid';
+            photoArchive.forEach((e, idx) => {
+                const tile = document.createElement('button'); tile.type = 'button'; tile.className = 'photo-tile';
+                const img = document.createElement('img'); img.src = entryPip(e); img.alt = 'PHOTO ' + (idx + 1);
+                tile.appendChild(img); tile.onclick = () => pickPhotoForMail(idx);
+                tiles.appendChild(tile);
+            });
+            grid.appendChild(tiles);
+            document.getElementById('photo-pick-modal').style.zIndex = '2100';
+            const snap = document.getElementById('pp-snap-btn');
+            if (snap) snap.style.display = 'none';
+            document.getElementById('photo-pick-modal').style.display = 'flex';
+        }
+        function setWaypointPhotoFromEntry(entry) {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const side = Math.min(img.width, img.height);
+                    const cv = document.createElement('canvas'); cv.width = cv.height = 96;
+                    cv.getContext('2d').drawImage(img, (img.width-side)/2, (img.height-side)/2,
+                        side, side, 0, 0, 96, 96);
+                    let thumb = '';
+                    for (const quality of [0.75, 0.6, 0.45, 0.3]) {
+                        thumb = cv.toDataURL('image/jpeg', quality);
+                        if (safeMarkerPhoto(thumb)) break;
+                    }
+                    if (!safeMarkerPhoto(thumb)) throw new Error('THUMBNAIL TOO LARGE');
+                    tempWpPhoto = thumb; updateWaypointPhotoPreview();
+                    showNotification('MARKER PHOTO READY — SAVE MARKER TO CONTINUE.');
+                } catch (e) { showNotification('PHOTO CANNOT BE USED AS A MARKER.'); }
+            };
+            img.onerror = () => showNotification('PHOTO UNREADABLE — PICK ANOTHER.');
+            img.src = entryPip(entry);
         }
 
         // v0.55: native <select> purged -- a themed picker lists your markers instead.
@@ -5064,7 +5121,11 @@
             });
 
             // Tapping empty map clears the sticky selection (beacon OR zone, v0.51)
-            pipMap.on('click', function() { if (selectedBeaconUid || selectedZoneKey || selectedPinKey) deselectBeacon(); });
+            pipMap.on('click', function() {
+                if (selectedBeaconUid || selectedZoneKey || selectedPinKey || selectedLocalWaypointId) {
+                    deselectBeacon(); selectedLocalWaypointId = null; updateOverseerSelectedMarkerAction();
+                }
+            });
 
             markersGroup = L.layerGroup().addTo(pipMap);
             otherPlayersGroup = L.layerGroup().addTo(pipMap);
@@ -5112,10 +5173,7 @@
                         if (uid === myUid) continue; // Don't draw ourselves twice
 
                         const p = data[uid];
-                        if (!p) continue;
-
-                        // Skip any beacon older than 24 hours (keeps the radar map clean)
-                        if (!p.timestamp || (Date.now() - p.timestamp) > 24 * 60 * 60 * 1000) continue;
+                        if (!isLiveWastelander(uid, p)) continue; // live real beacons only
 
                         // v0.56: one rotten beacon record could throw mid-loop and black out EVERY
                         // dot on this unit (roster/zones kept rendering) -- guard per-beacon
@@ -5190,6 +5248,16 @@
             renderWastelandersListMap();
         }
 
+        function safeMarkerPhoto(data) {
+            return typeof data === 'string' && data.length <= 25000 &&
+                /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(data) ? data : null;
+        }
+        function markerPhotoIcon(photo) {
+            return L.divIcon({ className: 'custom-pip-marker',
+                html: '<div style="width:64px;height:64px;box-sizing:border-box;border-radius:50%;border:5px solid #ffb642;box-shadow:0 0 16px #ffb642;overflow:hidden;background:#000"><img alt="MAP MARKER" src="' + photo + '" style="width:100%;height:100%;object-fit:cover"></div>',
+                iconSize: [64, 64], iconAnchor: [32, 32] });
+        }
+
         // v0.56: the live signal census chip on the map edge
         function updateSignalsChip(live, cold) {
             const el = document.getElementById('map-signals');
@@ -5221,7 +5289,7 @@
                 // v0.63: only prune non-permanent pins (overseer-broadcast pins have permanent:true)
                 if (!p.permanent && (!p.ts || (now - p.ts) > 72 * 60 * 60 * 1000)) return; // stale: skip
                 const who = p.fromName ? (' — VIA ' + String(p.fromName).toUpperCase()) : '';
-                const pm = L.marker([p.lat, p.lng], {icon: sharedIcon, zIndexOffset: 500})
+                const pm = L.marker([p.lat, p.lng], {icon: safeMarkerPhoto(p.photoThumb) ? markerPhotoIcon(p.photoThumb) : sharedIcon, zIndexOffset: 500})
                     .bindTooltip(String(p.label || 'SHARED MARKER').toUpperCase() + who, {
                         permanent: false, // v0.56: labels reveal on tap only (user)
                         direction: 'bottom',
@@ -5333,6 +5401,17 @@
             else if (selectedZoneKey) updateZoneCard();
         }
 
+        function isDemoWastelander(uid, record) {
+            return /^demo-player-(?:[1-9]|10)$/.test(uid) || record?.isDemo === true;
+        }
+        function isLiveWastelander(uid, record, now = Date.now()) {
+            return !isDemoWastelander(uid, record) && record &&
+                typeof record.timestamp === 'number' && record.timestamp <= now + 60000 &&
+                now - record.timestamp <= 300000 &&
+                typeof record.lat === 'number' && typeof record.lng === 'number' &&
+                Number.isFinite(record.lat) && Number.isFinite(record.lng);
+        }
+
         // v0.63: render scrollable list of live wastelanders below map
         function renderWastelandersListMap() {
             const liveEl = document.getElementById('wastelanders-scroll');
@@ -5345,7 +5424,7 @@
             Object.keys(lastKnownBeaconData || {}).forEach(uid => {
                 if (uid === myUid) return; // skip self
                 const b = lastKnownBeaconData[uid];
-                if (!b || !b.timestamp) return;
+                if (!isLiveWastelander(uid, b, now)) return;
                 const ageMin = Math.floor((now - b.timestamp) / 60000);
                 const dist = (myLastLat !== null && typeof b.lat === 'number') ? getDistance(myLastLat, myLastLng, b.lat, b.lng) : null;
                 const entry = { uid, name: b.name || 'UNKNOWN', lat: b.lat, lng: b.lng, ageMin, dist };
@@ -5446,7 +5525,7 @@
             });
 
             waypoints.forEach(wp => {
-                const marker = L.marker([wp.lat, wp.lng], {icon: customIcon})
+                const marker = L.marker([wp.lat, wp.lng], {icon: safeMarkerPhoto(wp.photoThumb) ? markerPhotoIcon(wp.photoThumb) : customIcon})
                     .bindTooltip(wp.name, {
                         permanent: false, // v0.56: labels reveal on tap only (user)
                         direction: 'top', 
@@ -5456,7 +5535,12 @@
                 
                 // v0.140: Add click handler to remove marker (for overseer display)
                 marker.on('click', function(e) {
-                    L.DomEvent.stopPropagation(e);
+                    L.DomEvent.stopPropagation(e.originalEvent || e);
+                    if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
+                        deselectBeacon(); selectedLocalWaypointId = wp.id;
+                        marker.openTooltip(); updateOverseerSelectedMarkerAction();
+                        return;
+                    }
                     showCustomPrompt('REMOVE MARKER "' + wp.name.toUpperCase() + '"?', [
                         { label: 'REMOVE IT', color: '#ff3333', action: () => {
                             deleteWaypointById(wp.id);
@@ -5513,6 +5597,7 @@
                 name: name.toUpperCase(),
                 lat: tempWpLat,
                 lng: tempWpLng,
+                ...(tempWpPhoto ? { photoThumb: tempWpPhoto } : {}),
                 discovered: false // By default, user-created waypoints can also be "discovered"
             };
             waypoints.push(wp);
@@ -5524,7 +5609,7 @@
             // marker -- silent auto-broadcast of every scribble would flood the board)
             // v0.63: overseers can mark broadcasts as permanent (no 72h prune)
             const isOverseer = localStorage.getItem('pipboy-dev-mode') === 'true';
-            showCustomPrompt('MARKER SAVED. BROADCAST "' + wp.name + '" TO ALL WASTELANDERS?', [
+            showCustomPrompt('MARKER SAVED: "' + wp.name + '". SHARE WITH EVERYONE? BROADCAST TO ALL WASTELANDERS?', [
                 { label: 'SHARE WITH EVERYONE' + (isOverseer ? ' (PERMANENT)' : ''), action: () => broadcastWaypoint(wp, isOverseer) },
                 { label: 'KEEP PRIVATE', color: 'var(--pip-color-dim)', action: () => {} }
             ]);
@@ -5541,7 +5626,8 @@
                 from: myMailUid || 'ANON',
                 fromName: String(userProfile.name || 'UNKNOWN').toUpperCase().substring(0, 32),
                 ts: Date.now(),
-                permanent: !!permanent // v0.63: overseer-broadcast pins persist indefinitely
+                permanent: !!permanent, // v0.63: overseer-broadcast pins persist indefinitely
+                ...(safeMarkerPhoto(wp.photoThumb) ? { photoThumb: wp.photoThumb } : {})
             };
             window.firebaseSet(window.firebaseRef(window.db, 'sharedpins/' + key), pin)
                 .then(() => showNotification(permanent ? 'MARKER BROADCAST TO ALL WASTELANDERS (PERMANENT).' : 'MARKER BROADCAST TO ALL WASTELANDERS.'))
@@ -5551,6 +5637,7 @@
         // v0.55: takes the id directly now (themed picker), the select is gone
         function deleteWaypointById(idToRemove) {
             waypoints = waypoints.filter(wp => wp.id !== idToRemove);
+            selectedLocalWaypointId = null; updateOverseerSelectedMarkerAction();
             saveToStorage();
             if (pipMap) renderMarkers(); // MAP tab or moved Overseer map
             closeModals();
@@ -5810,6 +5897,7 @@
                 lat: blat,
                 lng: blng,
                 timestamp: Date.now(),
+                scrambled: scramblerOn(), // exclude decoy GPS beacons from physical group stories
                 hp: Math.max(0, userProfile.maxHp - Math.floor((myRads / 1000) * userProfile.maxHp)),
                 rads: myRads,
                 mutations: activeMutations.length, // v0.58: broadcast mutation count for beacon indicator
@@ -9358,6 +9446,8 @@
 
         function closePhotoPick() {
             document.getElementById('photo-pick-modal').style.display = 'none';
+            document.getElementById('photo-pick-modal').style.zIndex = '';
+            const snap = document.getElementById('pp-snap-btn'); if (snap) snap.style.display = '';
             if (photoPickMode === 'attach') {
                 // back to the draft — attachments and text survive the picker detour
                 document.getElementById('compose-msg-modal').style.display = 'flex';
@@ -9383,6 +9473,14 @@
                 cmAttach.photo = entry;
                 refreshAttachUi();
                 document.getElementById('compose-msg-modal').style.display = 'flex';
+                return;
+            }
+            if (photoPickMode === 'marker') {
+                document.getElementById('photo-pick-modal').style.zIndex = '';
+                const snap = document.getElementById('pp-snap-btn'); if (snap) snap.style.display = '';
+                photoPickMode = 'send';
+                document.getElementById('add-waypoint-modal').style.display = 'flex';
+                setWaypointPhotoFromEntry(entry);
                 return;
             }
             // v0.50 avatar-mode: square-crop into the STATUS graphic, no mail involved
@@ -9938,6 +10036,7 @@
 
         // --- MAP STICKY-SELECT (tap a wastelander beacon) ---
         function selectBeacon(uid) {
+            selectedLocalWaypointId = null; updateOverseerSelectedMarkerAction();
             selectedBeaconUid = safeUid(uid);
             deselectZone(); // v0.51: one selection at a time -- clears zone label/card
             deselectPin(); // v0.56
@@ -9962,6 +10061,7 @@
                 const prev = zoneMarkerRefs[selectedZoneKey];
                 if (prev) prev.closeTooltip();
             }
+            selectedLocalWaypointId = null; updateOverseerSelectedMarkerAction();
             selectedZoneKey = zk;
             const zm = zoneMarkerRefs[zk];
             if (zm) zm.openTooltip();
@@ -9978,9 +10078,12 @@
         }
         // v0.56: shared-pin sticky select + Overseer broadcast-pin removal (zone warden sibling)
         let selectedPinKey = null;
+        let selectedLocalWaypointId = null;
         function selectSharedPin(key) {
             deselectBeacon(); // one card at a time (clears beacon + zone + pin)
+            selectedLocalWaypointId = null;
             selectedPinKey = key;
+            updateOverseerSelectedMarkerAction();
             const pm = pinMarkerRefs[key];
             if (pm) pm.openTooltip();
             updatePinCard();
@@ -9991,7 +10094,32 @@
                 if (pm) pm.closeTooltip();
                 selectedPinKey = null;
             }
+            updateOverseerSelectedMarkerAction();
         }
+        function updateOverseerSelectedMarkerAction() {
+            const button = document.getElementById('overseer-remove-selected');
+            if (!button) return;
+            const active = document.getElementById('overseer-display-modal')?.style.display === 'flex' &&
+                localStorage.getItem('pipboy-dev-mode') === 'true';
+            const kind = active && selectedPinKey && lastKnownSharedPins[selectedPinKey] ? 'SHARED' :
+                active && selectedLocalWaypointId !== null && waypoints.some(w => w.id === selectedLocalWaypointId) ? 'LOCAL' : null;
+            button.style.display = kind ? 'inline-block' : 'none';
+            button.textContent = kind ? '[REMOVE SELECTED ' + kind + ' MARKER]' : '';
+        }
+        function removeOverseerSelectedMarker() {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true') return;
+            if (selectedPinKey && lastKnownSharedPins[selectedPinKey]) {
+                if (document.getElementById('overseer-display-modal')?.style.display === 'flex') removeSharedPin(selectedPinKey);
+                return;
+            }
+            if (document.getElementById('overseer-display-modal')?.style.display !== 'flex') return;
+            const wp = waypoints.find(w => w.id === selectedLocalWaypointId);
+            if (wp) showCustomPrompt('REMOVE LOCAL MARKER "' + wp.name + '" FROM THIS DEVICE ONLY?', [
+                {label:'REMOVE LOCAL', color:'#ff3333', action:()=>deleteWaypointById(wp.id)},
+                {label:'CANCEL', action:()=>{}}
+            ]);
+        }
+
         function updatePinCard() {
             const card = document.getElementById('map-user-card');
             if (!card) return;
@@ -10025,7 +10153,7 @@
                     window.firebaseRemove(window.firebaseRef(window.db, 'sharedpins/' + key))
                         .then(() => {
                             showNotification('BROADCAST PIN REMOVED FROM ALL UNITS.');
-                            deselectPin();
+                            deselectPin(); updateOverseerSelectedMarkerAction();
                             const card = document.getElementById('map-user-card');
                             if (card) card.style.display = 'none';
                         })
@@ -11078,6 +11206,7 @@
             }
             
             document.getElementById('overseer-display-modal').style.display = 'flex';
+            updateOverseerSelectedMarkerAction();
             
             // Ensure map is initialized before moving it
             if (!pipMap) {
@@ -11127,6 +11256,7 @@
 
         function closeOverseerDisplay() {
             document.getElementById('overseer-display-modal').style.display = 'none';
+            selectedLocalWaypointId = null; updateOverseerSelectedMarkerAction();
             if (overseerRefreshInterval) {
                 clearInterval(overseerRefreshInterval);
                 overseerRefreshInterval = null;
@@ -11203,6 +11333,7 @@
             // Initialize stats for all wastelanders
             Object.keys(wastelanders).forEach(uid => {
                 const w = wastelanders[uid];
+                if (!isLiveWastelander(uid, w)) return;
                 stats[uid] = {
                     uid: uid,
                     name: w.name || 'UNKNOWN',
@@ -12204,8 +12335,7 @@
         function startFluffEventGeneration() {
             console.log('[Chronicle] Starting fluff event generation...');
             
-            // Generate demo players for testing
-            generateDemoPlayers();
+            // v0.311: NEVER write synthetic players into production.
             
             // Clear any existing interval
             if (chronicleIntervalId) {
@@ -12213,12 +12343,9 @@
             }
             
             // Run at configured frequency
-            chronicleIntervalId = setInterval(() => {
-                if (document.getElementById('overseer-display-modal')?.style.display === 'flex') {
-                    console.log('[Chronicle] Overseer display open, generating fluff events...');
-                    generateFluffEvents();
-                }
-            }, chronicleFrequency);
+            // Only an open Overseer client runs this timer; the display itself need not stay open.
+            // Transactional group IDs deduplicate across multiple active Overseer devices.
+            chronicleIntervalId = setInterval(generateFluffEvents, chronicleFrequency);
             
             // Generate initial events immediately
             setTimeout(() => {
@@ -12271,43 +12398,100 @@
             showNotification('CHRONICLE FREQUENCY: ' + (frequencyLabels[newFrequency] || newFrequency + 'ms'));
         }
         
-        function generateDemoPlayers() {
-            if (!window.db) {
-                console.error('[Chronicle] Firebase not available for demo player creation');
-                return;
+        // v0.311: 15 METRES, 5–9 or 10+ real live beacons (10 goes to 10+).
+        // One group Chronicle entry per 15-minute window. No decoys or demo players.
+        const gatheringTemplatesSmall = ['Five or more silhouettes gather at {place}; {group} stand close enough to trade a whisper, and nobody reaches for a weapon.', 'The wasteland pauses as {group} form a tight circle. For once, the Geiger counters are not the loudest voices.', '{group} converge beneath the same battered sky, turning scattered survivors into a small council.', 'A fire could draw raiders. {group} settle for quiet conversation and the warmth of standing together.', 'A lookout counts {count} shapes in a close-knit knot: {group}. The meeting is no accident.', 'Maps spread between {group}; every finger points toward a different danger.', '{group} trade news at arm’s length. In the wastes, information weighs less than ammunition.', 'A small gathering forms around {group}; old rivalries wait politely beyond the circle.', '{group} share a patch of ground and a rare moment of peace.', 'A nervous sentry watches {group} huddle over supplies, each contribution accounted for.', '{group} compare routes through the ruins. The shortest road rarely proves the safest.', 'Under a ruined sign, {group} make a plan that might last until sunrise.', '{group} exchange passwords and warnings, close enough that nobody else can hear.', 'The chatter around {group} rises and falls like a radio fighting through static.', '{group} count heads twice before moving on. In this world, every survivor matters.', 'A half-dozen possibilities unfold as {group} gather over a hand-drawn map.', '{group} stop together, listening for danger on the other side of the street.', 'The group around {group} shares water, rumours, and just enough trust to continue.', 'For one brief stretch, {group} hold the same ground against the wasteland.', '{group} gather in a tight formation; their next move will be decided together.'];
+        const gatheringTemplatesLarge = ['A crowd gathers around {group}. Ten or more wastelanders in one place could change the balance of power.', '{count} survivors stand close together; {group} have turned a meeting into an assembly.', 'The road belongs to {group} for now. A gathering this large cannot pass unnoticed.', 'Many voices rise over the static as {group} debate what happens next.', '{group} draw a crowd big enough to make even raiders choose another route.', 'An improvised town hall forms around {group}; every survivor demands to be heard.', 'The ground trembles under {count} pairs of boots as {group} assemble.', '{group} count supplies for an entire crowd. There are never enough for everybody.', 'A lookout signals a major gathering: {group}, shoulder to shoulder.', '{group} stand together in numbers seldom seen beyond the old cities.', 'The crowd around {group} falls silent when someone mentions the road ahead.', '{group} raise a banner above a gathering too large to keep secret.', 'Stories ripple through the crowd around {group}, changing with every retelling.', '{group} form a wall of bodies against the wind, their numbers a shelter of sorts.', 'Ten or more survivors join {group}; today the wasteland has an audience.', 'A market appears wherever {group} gather, then vanishes before nightfall.', '{group} establish a perimeter. With this many people together, somebody must watch the edges.', 'The gathering around {group} speaks in many voices but moves as one.', '{group} trade names and loyalties as the crowd grows large enough to have factions.', 'A rare mass meeting brings {group} together; its outcome may outlast the day.'];
+        function buildGatheringGroups(players) {
+            const real = players.filter(p => p.scrambled === false &&
+                typeof p.lat === 'number' && typeof p.lng === 'number')
+                .sort((a, b) => a.uid.localeCompare(b.uid));
+            const used = new Set(); const groups = [];
+            for (const seed of real) {
+                if (used.has(seed.uid)) continue;
+                const group = [seed];
+                for (const candidate of real) {
+                    if (candidate.uid === seed.uid || used.has(candidate.uid)) continue;
+                    // Require EVERY pair within 15m, not a long chain of people.
+                    if (group.every(member => getDistance(candidate.lat, candidate.lng,
+                        member.lat, member.lng) <= 15)) group.push(candidate);
+                }
+                if (group.length < 5) continue;
+                group.forEach(p => used.add(p.uid)); groups.push(group);
             }
-            
-            console.log('[Chronicle] Creating demo players...');
-            
-            // Create 10 demo players with random positions around Perth
-            const baseLat = -31.9505;
-            const baseLng = 115.8605;
-            
-            for (let i = 1; i <= 10; i++) {
-                const uid = `demo-player-${i}`;
-                const lat = baseLat + (Math.random() - 0.5) * 0.02; // ~2km radius
-                const lng = baseLng + (Math.random() - 0.5) * 0.02;
-                
-                const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
-                window.firebaseSet(playerRef, {
-                    name: `Player ${i}`,
-                    lat: lat,
-                    lng: lng,
-                    timestamp: Date.now(),
-                    hp: 80 + Math.floor(Math.random() * 20),
-                    rads: Math.floor(Math.random() * 300),
-                    radsLifetime: Math.floor(Math.random() * 1000),
-                    mutations: Math.floor(Math.random() * 5),
-                    photosTaken: Math.floor(Math.random() * 20),
-                    isDemo: true
-                }).then(() => {
-                    console.log(`[Chronicle] Created demo player ${i}`);
-                }).catch(err => {
-                    console.error(`[Chronicle] Error creating demo player ${i}:`, err);
-                });
-            }
+            return groups;
         }
-        
+        function publishGatheringStories(players, now) {
+            const included = new Set();
+            if (!window.db || !window.firebaseRunTransaction) return included;
+            buildGatheringGroups(players).forEach(group => {
+                group.forEach(p => included.add(p.uid));
+                const large = group.length >= 10;
+                const bucket = Math.floor(now / (15 * 60000));
+                const anchor = group[0].uid;
+                let hash = 2166136261;
+                for (const char of anchor) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+                const id = `g_${bucket}_${(hash >>> 0).toString(16)}`;
+                // Chronicle renderer inserts narratives as HTML and highlights names as regexes.
+                // Keep player-provided names plain and regex-safe in this new event type.
+                const names = group.map(p => String(p.name || 'WASTELANDER')
+                    .replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 24) || 'WASTELANDER');
+                const display = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} others` : '');
+                const templates = large ? gatheringTemplatesLarge : gatheringTemplatesSmall;
+                const text = templates[Math.floor(Math.random() * templates.length)]
+                    .replace(/\{group\}/g, display).replace(/\{count\}/g, String(group.length))
+                    .replace(/\{place\}/g, 'the ruins').slice(0, 1000);
+                const entry = {timestamp: now, eventType: large ? 'gathering10plus' : 'gathering5to9',
+                    narrative: text, affectedUsers: names.join(', ').slice(0, 800),
+                    day: window.eventStartTime ? Math.floor((now - window.eventStartTime) / 86400000) + 1 : 1};
+                window.firebaseRunTransaction(window.firebaseRef(window.db, 'chronicle/entries/' + id),
+                    current => current === null ? entry : undefined, {applyLocally: false})
+                    .catch(err => console.warn('[Chronicle] Gathering write failed:', err));
+            });
+            return included;
+        }
+
+        async function cleanupDemoWastelanders() {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true' || !window.db) return;
+            try {
+                const snapshot = await window.firebaseGet(window.firebaseRef(window.db, 'wastelanders'));
+                const candidates = Object.entries(snapshot.val() || {}).filter(([uid, w]) =>
+                    /^demo-player-(?:[1-9]|10)$/.test(uid) && w?.isDemo === true);
+                if (!candidates.length) { showNotification('NO DEMO-PLAYER RECORDS FOUND.'); return; }
+                showCustomPrompt('BACK UP ' + candidates.length + ' VERIFIED DEMO PLAYERS? ONLY demo-player-1..10 WITH isDemo:true. NOTHING IS DELETED YET.', [
+                    {label: 'DOWNLOAD JSON BACKUP', action: () => {
+                        try {
+                            const blob = new Blob([JSON.stringify(Object.fromEntries(candidates), null, 2)], {type:'application/json'});
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a'); link.href = url;
+                            link.download = 'pox-demo-player-backup-' + Date.now() + '.json';
+                            document.body.appendChild(link); link.click(); link.remove();
+                            setTimeout(() => URL.revokeObjectURL(url), 30000);
+                            showCustomPrompt('CHECK YOUR DOWNLOADS NOW. DID THE JSON BACKUP ARRIVE? ONLY CONFIRM REMOVAL IF YOU HAVE THE FILE. DELETION CANNOT BE UNDONE.', [
+                                {label:'YES, I HAVE THE BACKUP — REMOVE DEMO PLAYERS', color:'#ff3333', action: async () => {
+                                    try {
+                                        // Recheck each record atomically at deletion time.
+                                        let removed = 0;
+                                        for (const [uid] of candidates) {
+                                            const ref = window.firebaseRef(window.db, 'wastelanders/' + uid);
+                                            const result = await window.firebaseRunTransaction(ref, current =>
+                                                current?.isDemo === true && /^demo-player-(?:[1-9]|10)$/.test(uid) ? null : undefined,
+                                                {applyLocally: false});
+                                            if (result.committed) removed++;
+                                        }
+                                        showNotification('REMOVED ' + removed + ' DEMO PLAYERS.');
+                                        updateOverseerDisplay();
+                                    } catch (err) { showNotification('DEMO CLEANUP INCOMPLETE — CHECK SIGNAL.'); console.error(err); }
+                                }},
+                                {label:'NO / CANCEL', action:()=>{}}
+                            ]);
+                        } catch (err) { showNotification('BACKUP DOWNLOAD FAILED — NOTHING REMOVED.'); console.error(err); }
+                    }},
+                    {label: 'CANCEL', action: () => {}}
+                ]);
+            } catch (err) { showNotification('COULD NOT READ DEMO PLAYERS.'); }
+        }
+
         function generateFluffEvents() {
             if (!window.db) {
                 console.error('[Chronicle] Firebase not available for fluff event generation');
@@ -12315,9 +12499,6 @@
             }
             
             console.log('[Chronicle] Fetching wastelanders, zones, and pins...');
-            
-            // Update demo player timestamps to keep them "active"
-            updateDemoPlayerTimestamps();
             
             // Fetch current wastelanders, zones, pins, waypoints
             Promise.all([
@@ -12334,22 +12515,20 @@
                 console.log('[Chronicle] Found', Object.keys(pins).length, 'pins');
                 
                 const now = Date.now();
-                const fiveMinutesAgo = now - 300000;
                 
                 // Get active players (seen in last 5 minutes)
                 const activePlayers = Object.entries(wastelanders)
                     .filter(([uid, w]) => {
-                        const isActive = w.timestamp >= fiveMinutesAgo;
-                        const isNotTest = !isTestAccount(w.name);
-                        return isActive && isNotTest;
+                        return isLiveWastelander(uid, w, now) && !isTestAccount(w.name);
                     })
                     .map(([uid, w]) => ({ uid, ...w }));
                 
                 console.log('[Chronicle] Found', activePlayers.length, 'active players');
                 
-                // Generate 1 event per active player
+                // A real GPS cluster becomes ONE group story, not 5–10 per-player stories.
+                const groupedUids = publishGatheringStories(activePlayers, now);
                 let eventsGenerated = 0;
-                activePlayers.forEach(player => {
+                activePlayers.filter(player => !groupedUids.has(player.uid)).forEach(player => {
                     const event = generatePlayerEvent(player, activePlayers, zones, pins);
                     if (event) {
                         console.log(`[Chronicle] Generated event for ${player.name}:`, event.type);
@@ -12372,33 +12551,14 @@
             });
         }
         
-        function updateDemoPlayerTimestamps() {
-            // Update all demo players to have current timestamp (keeps them "active")
-            for (let i = 1; i <= 10; i++) {
-                const uid = `demo-player-${i}`;
-                const playerRef = window.firebaseRef(window.db, `wastelanders/${uid}`);
-                
-                // Update timestamp and slightly randomize position to simulate movement
-                // Include name field to satisfy Firebase validation rules
-                window.firebaseUpdate(playerRef, {
-                    name: `Player ${i}`,
-                    timestamp: Date.now(),
-                    lat: -31.9505 + (Math.random() - 0.5) * 0.02,
-                    lng: 115.8605 + (Math.random() - 0.5) * 0.02
-                }).catch(err => {
-                    console.error(`[Chronicle] Error updating demo player ${i} timestamp:`, err);
-                });
-            }
-        }
-        
         function generatePlayerEvent(player, allPlayers, zones, pins) {
             const playerLat = player.lat;
             const playerLng = player.lng;
             
             if (!playerLat || !playerLng) return null;
             
-            // Check proximity to zones (25m threshold)
-            for (const [zoneId, zone] of Object.entries(zones)) {
+            // Decoy coordinates are never evidence of a physical gathering/location.
+            if (player.scrambled === false) for (const [zoneId, zone] of Object.entries(zones)) {
                 if (zone.lat && zone.lng) {
                     const distance = getDistance(playerLat, playerLng, zone.lat, zone.lng);
                     if (distance <= 25) {
@@ -12432,8 +12592,9 @@
                 }
             }
             
-            // Check proximity to other players (25m threshold)
-            for (const otherPlayer of allPlayers) {
+            // Check proximity to other real-position players (25m threshold)
+            if (player.scrambled === false) for (const otherPlayer of allPlayers) {
+                if (otherPlayer.scrambled !== false) continue;
                 if (otherPlayer.uid !== player.uid && otherPlayer.lat && otherPlayer.lng) {
                     const distance = getDistance(playerLat, playerLng, otherPlayer.lat, otherPlayer.lng);
                     if (distance <= 25) {
@@ -12465,8 +12626,8 @@
                 }
             }
             
-            // Check proximity to shared pins (25m threshold)
-            for (const [pinId, pin] of Object.entries(pins)) {
+            // Check proximity to shared pins only with a real position.
+            if (player.scrambled === false) for (const [pinId, pin] of Object.entries(pins)) {
                 if (pin.lat && pin.lng) {
                     const distance = getDistance(playerLat, playerLng, pin.lat, pin.lng);
                     if (distance <= 25) {

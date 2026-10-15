@@ -61,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.310</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.311</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -653,7 +653,7 @@
     <div id="photo-pick-modal" class="modal-overlay" style="z-index: 126; position: fixed;">
         <div class="modal-content" style="max-width: 600px; max-height: 85vh;">
             <h3 id="pp-title">TRANSMIT PHOTO</h3>
-            <button class="pip-btn" onclick="snapNowForPicker()" style="width: 100%; border-style: dashed; margin-bottom: 15px; background: rgba(57, 255, 20, 0.2);">📷 SNAP NOW</button>
+            <button id="pp-snap-btn" class="pip-btn" onclick="snapNowForPicker()" style="width: 100%; border-style: dashed; margin-bottom: 15px; background: rgba(57, 255, 20, 0.2);">📷 SNAP NOW</button>
             <div id="pp-grid" style="overflow-y: auto; max-height: 60vh; margin-bottom: 15px;"></div>
             <button class="pip-btn" onclick="closePhotoPick()" style="border-style: dashed;">CANCEL</button>
         </div>
@@ -845,6 +845,9 @@
             <h3>ADD NEW MAP MARKER</h3>
             <div class="form-group"><label>MARKER NAME</label><input type="text" id="wp-name" class="pip-input vk-target" maxlength="32" readonly onclick="openVk('wp-name')" placeholder="e.g. VIP Bar"></div>
             <p style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 15px;">Coordinates locked to map selection.</p>
+            <button class="pip-btn" onclick="pickWaypointPhoto()">[OPTIONAL PHOTO FROM DATABANK]</button>
+            <img id="wp-photo-preview" alt="Selected marker thumbnail" style="display:none;width:64px;height:64px;object-fit:cover;border:5px solid #ffb642;border-radius:50%;box-sizing:border-box;margin:8px auto;">
+            <button id="wp-photo-clear" class="pip-btn" onclick="clearWaypointPhoto()" style="display:none;border-style:dashed;">REMOVE SELECTED PHOTO</button>
 
             <!-- v0.52: privacy decoy placement — available to every unit, Overseer or not -->
             <button class="pip-btn" onclick="setDecoySite()" style="border-color: #ffb642; color: #ffb642; margin-bottom: 12px;">[SET DECOY SITE HERE]</button>
@@ -991,7 +994,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.310</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.311</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1022,7 +1025,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.310</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.311</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
@@ -1109,6 +1112,7 @@
                         </select>
                     </div>
                     
+                    <button class="theme-btn" onclick="cleanupDemoWastelanders()" style="border-color:#ff3333;color:#ff3333;margin-bottom:6px;">[BACK UP & REMOVE DEMO PLAYERS]</button>
                     <!-- Top Half: Player List -->
                     <div id="overseer-player-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--pip-color); padding: 10px; margin-bottom: 10px;">
                         <p style="text-align: center; opacity: 0.5;">Loading players...</p>
@@ -1140,8 +1144,7 @@
                         <p style="font-size: 0.75rem; opacity: 0.7; margin: 0; flex: 1;">[CENTER DOT = MARKER POSITION]</p>
                         <button class="theme-btn" onclick="overseerCenterMap()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">◎ CENTER</button>
                         <button class="theme-btn" onclick="openAddWaypointModal()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">+ MARKER</button>
-                        <button class="theme-btn" onclick="openRemoveWaypointModal()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">- LOCAL</button>
-                        <button class="theme-btn" onclick="openRemoveSharedPinModal()" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">- SHARED</button>
+                        <button class="theme-btn" id="overseer-remove-selected" onclick="removeOverseerSelectedMarker()" style="display:none;padding: 4px 8px; font-size: 0.75rem; margin: 0;"></button>
                     </div>
                     <div style="position: relative; flex-grow: 1; min-height: 400px;">
                         <div id="overseer-map-container" style="border: 1px solid var(--pip-color); position: relative; width: 100%; height: 100%;">

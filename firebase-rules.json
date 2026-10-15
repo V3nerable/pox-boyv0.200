@@ -49,6 +49,9 @@
         },
         "$other": {
           ".validate": false
+        },
+        "scrambled": {
+          ".validate": "newData.isBoolean()"
         }
       }
     },
@@ -119,6 +122,9 @@
         },
         "$other": {
           ".validate": false
+        },
+        "photoThumb": {
+          ".validate": "newData.isString() && newData.val().length <= 25000 && newData.val().beginsWith('data:image/jpeg;base64,')"
         }
       }
     },

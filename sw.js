@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pipboy-cache-v292';
+const CACHE_NAME = 'pipboy-cache-v293';
 // v0.53: radio packs live in their own bucket -- app updates must NEVER wipe them
 const RADIO_CACHE = 'pox-radio-v1';
 
@@ -11,6 +11,12 @@ const urlsToCache = [
   './icon.png',
   './icon-192.png',
   './icon-512.png',
+  './radio-stations.json'
+];
+
+// Optional media may already live on the user's existing site but is not bundled
+// in this archive. A missing file must never abort the app-shell installation.
+const optionalToCache = [
   './favicon.ico',
   './geiger.mp3',
   './lunchbox.mp3',
@@ -23,7 +29,6 @@ const urlsToCache = [
   './camera-open.wav',
   './notification.wav',
   './button-press.wav',
-  './radio-stations.json',
   'https://fonts.googleapis.com/css2?family=VT323&display=swap'
 ];
 
@@ -31,7 +36,10 @@ self.addEventListener('install', event => {
   self.skipWaiting(); // Force the new service worker to activate immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+      .then(async cache => {
+        await cache.addAll(urlsToCache); // required shell: fail only if shell is broken
+        await Promise.all(optionalToCache.map(url => cache.add(url).catch(() => {})));
+      })
   );
 });
 
