@@ -61,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.316</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.317</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -114,7 +114,9 @@
                     <span id="vb-starched" style="display:none; position:absolute; top:4px; right:4px; font-size:1.2rem; color:#ffb642; text-shadow:0 0 6px #ffb642;" title="STARCHED GENES ACTIVE">🧬🔒</span>
                 </div>
                 <p id="stat-name-display" style="text-align: center; font-size: 1.4rem; font-weight: bold; margin-bottom: 5px;">NAME: UNKNOWN</p>
-                <p style="text-align: center; opacity: 0.8; margin-bottom: 15px;">LVL 1 - INITIATE</p>
+                <p id="status-level-title" style="text-align:center;opacity:0.8;margin-bottom:4px;">LVL 1 - INITIATE</p>
+                <p id="status-xp" style="text-align:center;font-size:0.9rem;margin-bottom:4px;">XP SYNCING...</p>
+                <div style="height:8px;border:1px solid var(--pip-color);margin-bottom:15px;"><div id="status-xp-fill" style="height:100%;width:0;background:var(--pip-color);"></div></div>
                 
                 <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px;">
                     <div style="font-weight: bold;">HEALTH / RADS</div>
@@ -164,6 +166,7 @@
                     <p>LOCATIONS DISCOVERED: <span id="fs-locations">1</span></p>
                     <p>DAYS PASSED: <span id="fs-days">0</span></p>
                     <p>QUESTS COMPLETED: <span id="fs-quests">0</span></p>
+                    <p>QUEST XP: <span id="fs-xp">SYNCING</span></p>
                     <p>WASTELANDERS MET: <span id="fs-wastelanders">0</span></p>
                     <p>TRANSMISSIONS SENT: <span id="fs-tx-sent">0</span></p>
                     <p>PHOTOS ARCHIVED: <span id="fs-photos">0</span></p>
@@ -993,7 +996,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.316</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.317</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1024,7 +1027,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.316</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.317</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
@@ -1137,6 +1140,14 @@
                 
                 <!-- Right Panel: Map (50%) - Reuses main map -->
                 <div class="overseer-right" style="flex: 1; display: flex; flex-direction: column; min-width: 300px;">
+                    <!-- Shared Overseer RAD climate controls (UI-only gate). -->
+                    <div id="overseer-climate-panel" style="border:1px dashed var(--pip-color-dim);padding:6px;margin-bottom:6px;flex-shrink:0;">
+                        <div id="overseer-climate-status" role="status" style="font-size:0.85rem;line-height:1.2;">RAD CLIMATE SYNCING...</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+                            <button type="button" class="theme-btn" onclick="configureOverseerDailyRads()">DAILY RAD RATES</button>
+                            <button type="button" id="overseer-storm-btn" class="theme-btn" onclick="toggleOverseerStorm()">START STORM</button>
+                        </div>
+                    </div>
                     <!-- Map Controls -->
                     <div style="display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap;">
                         <p style="font-size: 0.75rem; opacity: 0.7; margin: 0; flex: 1;">[CENTER DOT = MARKER POSITION]</p>

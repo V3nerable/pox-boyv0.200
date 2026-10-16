@@ -488,6 +488,7 @@
 
             if (el('fs-locations')) el('fs-locations').innerText = locations;
             if (el('fs-days')) el('fs-days').innerText = daysPassed;
+            refreshXpDisplay();
             if (el('fs-quests')) el('fs-quests').innerText = qCompleted;
             if (el('fs-wastelanders')) el('fs-wastelanders').innerText = wastelandersMet;
             if (el('fs-tx-sent')) el('fs-tx-sent').innerText = txSent;
@@ -1218,8 +1219,7 @@
             document.getElementById('stat-name-display').innerText = 'NAME: ' + userProfile.name;
             
             // Update Title
-            const titleEl = document.querySelector('#sub-stat-status p:nth-of-type(2)');
-            if(titleEl) titleEl.innerText = `LVL 1 - ${userProfile.title}`;
+            refreshXpDisplay();
             
             // Render Math for HP vs Rads
             const radsRaw = userProfile.rads || 0;
@@ -3574,7 +3574,7 @@
             window.firebaseUpdate(progRef, updates)
                 .then(() => {
                     console.log('[Multi-Stage] Firebase update successful');
-                    playSound('level-up');
+                    playSound('notification'); // Actual LEVEL UP sound is reserved for verified XP.
                     
                     if (allStagesCompleted) {
                         // v0.287: All quests require issuer verification (no auto-verify for bounty)
@@ -3856,7 +3856,7 @@
                         status: 'verified',
                         verifiedBy: myUid,
                         verifiedByName: userProfile.name || 'UNKNOWN',
-                        verifiedAt: Date.now()
+                        verifiedAt: Date.now(), xpEligible: true
                     })
                         .then(() => {
                             closeCustomPrompt();
@@ -4149,6 +4149,7 @@
                     
                     firebaseQuests = newQuests;
                     window.questStatsMirror = newQuests;
+                    claimVerifiedQuestXp();
                     if (document.getElementById('tab-stat')?.classList.contains('active')) renderFunStats();
                     
                     // v0.208: Skip verification check on first load (prevents showing modal for already-verified quests)
@@ -7619,6 +7620,75 @@
             localStorage.setItem('pipboy-uid', myMailUid);
         }
 
+        // v0.317: Only verifications made by this version set xpEligible=true.
+        // A per-UID/per-quest immutable Firebase receipt survives quest deletion and
+        // makes retries/reconnects idempotent. Older verified quests are not backfilled.
+        const questXpCacheKey = 'pipboy-xp-receipts-' + myMailUid;
+        let questXpAwards = {};
+        try { questXpAwards = JSON.parse(localStorage.getItem(questXpCacheKey) || '{}') || {}; } catch (e) {}
+        let questXpLoaded = localStorage.getItem(questXpCacheKey) !== null;
+        let questXpSynced = false;
+        const xpClaimsPending = new Set();
+        function xpProgress(total) {
+            let level = 1, floor = 0, next = 50;
+            while (total >= floor + next && level < 10000) {
+                floor += next; level++; next += 25;
+            }
+            return { level, total, into: total - floor, next, remaining: next - (total - floor) };
+        }
+        function currentXpProgress() {
+            const total = Object.values(questXpAwards).reduce((sum, award) =>
+                sum + (award && award.xp === 25 ? 25 : 0), 0);
+            return xpProgress(total);
+        }
+        function refreshXpDisplay() {
+            const p = currentXpProgress();
+            const titleEl = document.getElementById('status-level-title');
+            if (titleEl) titleEl.textContent = `LVL ${p.level} - ${userProfile.title || 'INITIATE'}`;
+            const detail = document.getElementById('status-xp');
+            if (detail) detail.textContent = questXpLoaded
+                ? `${p.total} XP TOTAL · ${p.into}/${p.next} TO LVL ${p.level + 1}` : 'XP SYNCING...';
+            const bar = document.getElementById('status-xp-fill');
+            if (bar) bar.style.width = questXpLoaded ? (100 * p.into / p.next) + '%' : '0%';
+            const stats = document.getElementById('fs-xp');
+            if (stats) stats.textContent = questXpLoaded
+                ? `${p.total} XP · LVL ${p.level} · ${p.remaining} XP TO NEXT` : 'SYNCING';
+        }
+        function claimVerifiedQuestXp() {
+            if (!window.db || !questXpSynced || !myMailUid) return;
+            Object.entries(firebaseQuests || {}).forEach(([id, quest]) => {
+                const progress = quest?.progress?.[myMailUid];
+                if (quest?.type !== 'multi-stage' || progress?.status !== 'verified' ||
+                    progress.xpEligible !== true || questXpAwards[id] || xpClaimsPending.has(id)) return;
+                xpClaimsPending.add(id);
+                window.firebaseRunTransaction(window.firebaseRef(window.db, `questXpAwards/${myMailUid}/${id}`),
+                    current => current === null ? { xp:25, verifiedAt:progress.verifiedAt || Date.now() } : undefined)
+                    .then(result => {
+                        if (result.committed) {
+                            const before = currentXpProgress().level;
+                            questXpAwards[id] = result.snapshot.val();
+                            try { localStorage.setItem(questXpCacheKey, JSON.stringify(questXpAwards)); } catch(e) {}
+                            const after = currentXpProgress().level;
+                            refreshXpDisplay();
+                            playSound(after > before ? 'levelUp' : 'xp');
+                            showNotification(after > before ? `+25 XP · LEVEL ${after} REACHED!` : '+25 XP · QUEST VERIFIED');
+                        }
+                    })
+                    .catch(err => console.warn('[Quest XP] Receipt retry on reconnect:', err))
+                    .finally(() => xpClaimsPending.delete(id));
+            });
+        }
+        function startQuestXpListener() {
+            if (!window.db || !myMailUid) return;
+            window.firebaseOnValue(window.firebaseRef(window.db, 'questXpAwards/' + myMailUid), snap => {
+                questXpAwards = snap.val() || {};
+                questXpLoaded = true; questXpSynced = true;
+                try { localStorage.setItem(questXpCacheKey, JSON.stringify(questXpAwards)); } catch(e) {}
+                refreshXpDisplay();
+                claimVerifiedQuestXp();
+            }, err => console.warn('[Quest XP] Cannot load awards:', err));
+        }
+
         // --- Comms state (all persisted locally) ---
         let rolodex = JSON.parse(localStorage.getItem('pipboy-rolodex') || '[]');
         let outbox = JSON.parse(localStorage.getItem('pipboy-outbox') || '[]').filter(e => e.type !== 'quest');
@@ -8188,6 +8258,7 @@
                         showNotification('✦ DECONTAMINATION COMPLETE — RADS SHED. MUTATIONS HOLD.');
                     }
                 }
+                rememberClimateShelter();
                 renderVaultBoyFx(); // overlays repaint on any engine evaluation
             }
             // Hysteresis: the field GRABS at its radius and RELEASES 20% past it — no boundary
@@ -8310,6 +8381,135 @@
             if (Math.random() < 0.25) setTimeout(geigerClick, 120 + Math.random() * 140);
         }
 
+        // v0.317: Festival radiation is a shared Overseer setting. All client dosing
+        // is best-effort; while closed, assume the LAST recorded MED-zone state for
+        // at most 60 missed minutes. The normal quiet-waste -1/min still applies on
+        // days without ambient/storm exposure; existing HOT/pariah ticks are unchanged.
+        const defaultClimateRates = { '2026-10-22':1, '2026-10-23':2, '2026-10-24':3 };
+        let radClimate = { dailyRates: { ...defaultClimateRates } };
+        let radClimateReady = false;
+        const climateCheckpointKey = 'pipboy-rad-climate-' + myMailUid;
+        function climateDayAt(ts) {
+            const f = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+                timeZone:'Australia/Perth', year:'numeric',month:'2-digit',day:'2-digit'
+            }).formatToParts(new Date(ts)).map(p => [p.type,p.value]));
+            return `${f.year}-${f.month}-${f.day}`;
+        }
+        function climateDoseAt(ts, config = radClimate) {
+            const day = climateDayAt(ts);
+            const daily = Number.isInteger(config?.dailyRates?.[day]) ? config.dailyRates[day] :
+                (defaultClimateRates[day] || 0);
+            const storm = config?.storm;
+            const extra = storm && ts >= storm.startsAt && ts < storm.endsAt ? storm.rate : 0;
+            return Math.max(0, daily + (Number.isInteger(extra) ? extra : 0));
+        }
+        function radClimateTick(now = Date.now()) {
+            if (!userProfile.isInitiated) return 0;
+            let checkpoint;
+            try { checkpoint = JSON.parse(localStorage.getItem(climateCheckpointKey) || 'null'); } catch (e) {}
+            if (!checkpoint || !Number.isFinite(checkpoint.at) || checkpoint.at > now) {
+                localStorage.setItem(climateCheckpointKey, JSON.stringify({ at:now, med:!!medShelterActive }));
+                return 0;
+            }
+            const previous = checkpoint.at;
+            // No more than 60 missed minutes. Cap includes open-but-suspended tabs.
+            const start = Math.max(previous, now - 60 * 60000);
+            let dose = 0;
+            const sheltered = !!checkpoint.med;
+            for (let t = start + 60000; t <= now; t += 60000) {
+                if (!sheltered) dose += climateDoseAt(t);
+            }
+            // Keep sub-minute remainder on an active tab; discard older time past cap.
+            const at = previous < now - 60 * 60000 ? now :
+                previous + Math.floor((now - previous) / 60000) * 60000;
+            localStorage.setItem(climateCheckpointKey, JSON.stringify({ at, med:!!medShelterActive }));
+            if (dose > 0) adjustRads(dose);
+            return dose;
+        }
+        function rememberClimateShelter() {
+            try {
+                const c = JSON.parse(localStorage.getItem(climateCheckpointKey) || 'null');
+                // Do not overwrite the last OFFLINE shelter state with a new GPS
+                // fix before the pending catch-up has been applied.
+                if (c && Number.isFinite(c.at) && Date.now() - c.at < 60000 &&
+                    c.med !== !!medShelterActive) {
+                    c.med = !!medShelterActive;
+                    localStorage.setItem(climateCheckpointKey, JSON.stringify(c));
+                }
+            } catch (e) {}
+        }
+        function renderRadClimateControls() {
+            const status = document.getElementById('overseer-climate-status');
+            if (!status) return;
+            const rates = { ...defaultClimateRates, ...(radClimate.dailyRates || {}) };
+            const storm = radClimate.storm;
+            const active = storm && Date.now() >= storm.startsAt && Date.now() < storm.endsAt;
+            status.textContent = `OPEN WASTES · 22/23/24 OCT: ${rates['2026-10-22']}/${rates['2026-10-23']}/${rates['2026-10-24']} RAD/MIN · STORM ${active ? storm.rate + ' RAD/MIN UNTIL ' + new Date(storm.endsAt).toLocaleTimeString('en-AU', {timeZone:'Australia/Perth',hour:'2-digit',minute:'2-digit'}) + ' AWST' : 'OFF'}`;
+            const btn = document.getElementById('overseer-storm-btn');
+            if (btn) btn.textContent = active ? 'STOP STORM' : 'START STORM';
+        }
+        function startRadClimateListener() {
+            if (!window.db) return;
+            window.firebaseOnValue(window.firebaseRef(window.db, 'radiationClimate/settings'), snap => {
+                radClimate = snap.val() || { dailyRates:{...defaultClimateRates} };
+                radClimateReady = true;
+                try { localStorage.setItem('pipboy-climate-settings',JSON.stringify(radClimate)); } catch(e) {}
+                renderRadClimateControls();
+                radClimateTick();
+            }, err => {
+                console.warn('[Rad Climate] Offline; using last saved settings:',err);
+                radClimateReady = true;
+                radClimateTick();
+                renderRadClimateControls();
+            });
+        }
+        function setOverseerDailyRate(day, rate) {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true' || !window.db) return;
+            window.firebaseSet(window.firebaseRef(window.db,'radiationClimate/settings/dailyRates/'+day), rate)
+                .then(() => showNotification('FESTIVAL RAD RATE UPDATED FOR ALL UNITS.'))
+                .catch(err => showNotification('RAD SETTINGS FAILED: '+err.message));
+        }
+        function configureOverseerDailyRads() {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true') return;
+            const days = Object.keys(defaultClimateRates);
+            showCustomPrompt('CHOOSE FESTIVAL DAY · OPEN-WASTE RAD/MIN (MED ZONES SHELTER)',
+                days.map(day => ({label:day.slice(5)+' · '+(radClimate.dailyRates?.[day] ?? defaultClimateRates[day])+'/MIN',
+                    action:()=>showCustomPrompt(day.slice(5)+' OPEN-WASTE RATE:',
+                        [0,1,2,3,4,5,10].map(rate => ({label:rate+' RAD/MIN',action:()=>setOverseerDailyRate(day,rate)})).concat([{label:'CANCEL',action:()=>{}}]))
+                })).concat([{label:'CANCEL',action:()=>{}}]));
+        }
+        function toggleOverseerStorm() {
+            if (localStorage.getItem('pipboy-dev-mode') !== 'true' || !window.db) return;
+            const existing = radClimate.storm;
+            if (existing && Date.now() >= existing.startsAt && Date.now() < existing.endsAt) {
+                showCustomPrompt('STOP THE GLOBAL RAD STORM FOR EVERYONE?', [
+                    {label:'STOP STORM',color:'#ff3333',action:()=>{
+                        window.firebaseUpdate(window.firebaseRef(window.db,'radiationClimate/settings/storm'),{endsAt:Date.now()})
+                            .catch(err=>showNotification('STOP FAILED: '+err.message));
+                    }},{label:'KEEP STORM',action:()=>{}}
+                ]);
+                return;
+            }
+            showCustomPrompt('START A GLOBAL RAD STORM? MED ZONES SHELTER; OFFLINE UNITS MAY CATCH UP FOR UP TO 1 HOUR. HIGH DOSES CAN BE LETHAL.',
+                [1,3,5,10].map(rate=>({label:'+'+rate+' RAD/MIN',action:()=>{
+                    showCustomPrompt('DURATION AT +'+rate+' RAD/MIN:',
+                        [15,30,60,120].map(minutes=>({label:minutes+' MIN',action:()=>{
+                            const now=Date.now();
+                            // Write only the storm: a pending daily-rate update must not
+                            // be overwritten by a stale local settings snapshot.
+                            window.firebaseSet(window.firebaseRef(window.db,'radiationClimate/settings/storm'),
+                                {startsAt:now,endsAt:now+minutes*60000,rate})
+                                .then(()=>showNotification('RAD STORM STARTED FOR ALL UNITS.'))
+                                .catch(err=>showNotification('START FAILED: '+err.message));
+                        }})).concat([{label:'CANCEL',action:()=>{}}]));
+                }})).concat([{label:'CANCEL',action:()=>{}}]));
+        }
+        // Settings survive a disconnected restart; Firebase wins when it reconnects.
+        try { radClimate = JSON.parse(localStorage.getItem('pipboy-climate-settings')) || radClimate; } catch(e) {}
+        // Wait for fresh shared settings before offline catch-up to avoid charging
+        // someone for a storm the Overseer stopped while this app was closed.
+        // An offline listener failure falls back to the last saved settings.
+
         // v0.48: two clocks. Fields burn FAST (user: "1 every 5 seconds"), recovery stays
         // one rad per quiet minute — and the two still never run at once.
         function radDamageTick() {
@@ -8330,7 +8530,10 @@
         function radDecayTick() {
             evalPariahField();
             // v0.50: ✚ MED ZONE shelter sheds 5/min; the open waste keeps its 1/min
-            if (!radFieldActive) adjustRads(medShelterActive ? -5 : -1);
+            if (!radClimateReady) return;
+            const climateDose = radClimateTick();
+            renderRadClimateControls(); // Expired storms update the Overseer button without reopening the page.
+            if (!radFieldActive && climateDose === 0) adjustRads(medShelterActive ? -5 : -1);
         }
         setInterval(radDecayTick, 60000);
 
@@ -9022,7 +9225,7 @@
             const progRef = window.firebaseRef(window.db, 'quests/' + match.questId + '/progress/' + match.uid);
             window.firebaseUpdate(progRef, {
                 status: 'verified', verifiedBy: myMailUid,
-                verifiedByName: userProfile.name || 'UNKNOWN', verifiedAt: Date.now()
+                verifiedByName: userProfile.name || 'UNKNOWN', verifiedAt: Date.now(), xpEligible: true
             }).then(() => {
                 showNotification('COMPLETION VERIFIED');
                 markProcessed(key); retireLetter(key);
@@ -10340,7 +10543,9 @@
                 startMailListener();
                 startPariahListener(); // v0.46
                 startRadZoneListener(); // v0.47
+                startRadClimateListener(); // shared daily rates and global storm
                 startStarchedListener(); // v0.58: Starched Genes global toggle
+                startQuestXpListener(); // permanent 25-XP receipts; existing verified quests excluded
                 startQuestsListener(); // v0.91: Unified quest system (replaces globalContracts + bounties)
                 startNukaPlannerListener(); // v0.308: shared Overseer event schedule
                 startPlannerClientReminders(); // best effort, only when a client is running/online
@@ -11265,6 +11470,7 @@
             }
             
             document.getElementById('overseer-display-modal').style.display = 'flex';
+            renderRadClimateControls();
             const markerStatus = document.getElementById('overseer-marker-status');
             if (markerStatus) { markerStatus.textContent = ''; markerStatus.style.display = 'none'; }
             updateOverseerSelectedMarkerAction();

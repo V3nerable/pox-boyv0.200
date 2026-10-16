@@ -481,6 +481,9 @@
             },
             "$other": {
               ".validate": false
+            },
+            "xpEligible": {
+              ".validate": "newData.isBoolean()"
             }
           }
         },
@@ -705,6 +708,53 @@
     "$other": {
       ".read": false,
       ".write": false
+    },
+    "questXpAwards": {
+      ".read": true,
+      "$uid": {
+        "$questId": {
+          ".write": "!data.exists() && root.child('quests').child($questId).child('progress').child($uid).child('status').val() == 'verified' && root.child('quests').child($questId).child('progress').child($uid).child('xpEligible').val() == true",
+          ".validate": "newData.hasChildren(['xp', 'verifiedAt']) && newData.child('xp').val() == 25 && newData.child('verifiedAt').isNumber() && newData.child('verifiedAt').val() > 1735689600000",
+          "xp": {
+            ".validate": "newData.isNumber() && newData.val() == 25"
+          },
+          "verifiedAt": {
+            ".validate": "newData.isNumber() && newData.val() > 1735689600000"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "radiationClimate": {
+      ".read": true,
+      "settings": {
+        ".write": true,
+        "dailyRates": {
+          "$day": {
+            ".validate": "($day == '2026-10-22' || $day == '2026-10-23' || $day == '2026-10-24') && newData.isNumber() && newData.val() >= 0 && newData.val() <= 10 && newData.val() % 1 == 0"
+          }
+        },
+        "storm": {
+          ".validate": "newData.hasChildren(['startsAt', 'endsAt', 'rate']) && newData.child('endsAt').val() >= newData.child('startsAt').val() && newData.child('endsAt').val() <= newData.child('startsAt').val() + 86400000",
+          "startsAt": {
+            ".validate": "newData.isNumber() && newData.val() > 1735689600000"
+          },
+          "endsAt": {
+            ".validate": "newData.isNumber() && newData.val() > 1735689600000"
+          },
+          "rate": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10 && newData.val() % 1 == 0"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }
