@@ -61,7 +61,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span class="header-title" id="main-os-title">POX-BOY 3026</span>
-                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.317</span>
+                <span style="font-size: 0.8rem; opacity: 0.5; flex-shrink: 0;">v0.318</span>
                 <span style="opacity: 0.5;">|</span>
                 <span id="pip-clock" style="font-size: 0.9rem; opacity: 0.8; white-space: nowrap;"></span>
             </div>
@@ -194,6 +194,15 @@
 
             <!-- v0.84: OVERSEER tab — all Overseer controls except radio (dev-mode only) -->
             <div id="sub-stat-overseer" class="sub-tab-content">
+                <!-- Overseer menu only: shared RAD climate controls (UI-only gate). -->
+                <div id="overseer-climate-panel" style="display:none;border:1px dashed var(--pip-color-dim);padding:6px;margin-bottom:6px;flex-shrink:0;">
+                        <h3 style="margin-bottom:6px;">☢ RAD CLIMATE</h3>
+                        <div id="overseer-climate-status" role="status" style="font-size:0.85rem;line-height:1.2;">RAD CLIMATE SYNCING...</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+                            <button type="button" class="theme-btn" onclick="configureOverseerDailyRads()">DAILY RAD RATES</button>
+                            <button type="button" id="overseer-storm-btn" class="theme-btn" onclick="toggleOverseerStorm()">START STORM</button>
+                        </div>
+                    </div>
                 <div id="overseer-pariahs" style="display:none;"></div>
             </div>
 
@@ -384,6 +393,10 @@
             </div>
         </div>
         <div id="tab-cam" class="tab-content" style="flex-direction: column; height: 100%;">
+            <div id="cam-send-photo-banner" style="display:none;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;border:1px dashed #42b6ff;color:#42b6ff;padding:6px;margin-bottom:8px;">
+                <span id="cam-send-photo-target">SNAP PHOTO FOR CONTACT</span>
+                <button type="button" class="theme-btn" onclick="cancelPendingPhotoSend()" style="border-color:#42b6ff;color:#42b6ff;flex-shrink:0;">CANCEL</button>
+            </div>
             
             <!-- CAM MENU STATE (Gallery Default) -->
             <div id="cam-menu-state" style="flex-grow: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
@@ -996,7 +1009,7 @@
     <div id="pre-boot-overlay" class="modal-overlay" style="z-index: 250; background: var(--pip-bg); flex-direction: column; display: none;">
         <!-- Version Tag & Dev Skip Button -->
         <div style="position: absolute; top: 10px; right: 10px; z-index: 260; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-            <span style="font-size: 0.8rem; opacity: 0.5;">v0.317</span>
+            <span style="font-size: 0.8rem; opacity: 0.5;">v0.318</span>
             <button class="pip-btn" onclick="openFactionAuth('DEV_SKIP')" style="font-size: 0.7rem; padding: 2px 5px; border: none; color: #ff3333; opacity: 0.5;">[DEV: FAST BOOT]</button>
         </div>
         
@@ -1027,7 +1040,7 @@
 
     <!-- BOOT SPLASH SCREEN -->
     <div id="boot-splash" class="modal-overlay" style="z-index: 200; background: var(--pip-bg); flex-direction: column; display: flex;">
-        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.317</span>
+        <span style="position: absolute; top: 10px; right: 10px; font-size: 0.8rem; opacity: 0.5; z-index: 203;">v0.318</span>
         <div class="crt" style="position: absolute; top:0; left:0; right:0; bottom:0; pointer-events: none; z-index: 201;"></div>
         <div style="z-index: 202; width: 100%; max-width: 600px; padding: 20px; text-align: left; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: flex-end;" id="boot-text-container">
             <p id="boot-log-1" style="margin-bottom: 5px; display: none; font-size: 1rem;">ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM</p>
@@ -1140,14 +1153,6 @@
                 
                 <!-- Right Panel: Map (50%) - Reuses main map -->
                 <div class="overseer-right" style="flex: 1; display: flex; flex-direction: column; min-width: 300px;">
-                    <!-- Shared Overseer RAD climate controls (UI-only gate). -->
-                    <div id="overseer-climate-panel" style="border:1px dashed var(--pip-color-dim);padding:6px;margin-bottom:6px;flex-shrink:0;">
-                        <div id="overseer-climate-status" role="status" style="font-size:0.85rem;line-height:1.2;">RAD CLIMATE SYNCING...</div>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
-                            <button type="button" class="theme-btn" onclick="configureOverseerDailyRads()">DAILY RAD RATES</button>
-                            <button type="button" id="overseer-storm-btn" class="theme-btn" onclick="toggleOverseerStorm()">START STORM</button>
-                        </div>
-                    </div>
                     <!-- Map Controls -->
                     <div style="display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap;">
                         <p style="font-size: 0.75rem; opacity: 0.7; margin: 0; flex: 1;">[CENTER DOT = MARKER POSITION]</p>

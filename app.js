@@ -6084,12 +6084,15 @@
         function renderOverseerTab() {
             const pariahEl = document.getElementById('overseer-pariahs');
             if (!pariahEl) return;
+            const climatePanel = document.getElementById('overseer-climate-panel');
+            if (climatePanel) climatePanel.style.display = localStorage.getItem('pipboy-dev-mode') === 'true' ? 'block' : 'none';
             if (localStorage.getItem('pipboy-dev-mode') !== 'true') {
                 pariahEl.style.display = 'none';
                 pariahEl.innerHTML = '';
                 return;
             }
             pariahEl.style.display = 'block';
+            renderRadClimateControls();
             pariahEl.innerHTML = renderPariahPanel() + renderOverseerUserManagement() + renderOverseerGlowingOnes()
                 // v0.299: Event reset belongs with dev-only STAT > OVERSEER controls,
                 // not beside the map on the public-facing Overseer display.
@@ -6394,6 +6397,8 @@
             // v0.46: PARIAH WATCH dies with Overseer mode
             const opEl = document.getElementById('overseer-pariahs');
             if (opEl) { opEl.style.display = 'none'; opEl.innerHTML = ''; }
+            const climatePanel = document.getElementById('overseer-climate-panel');
+            if (climatePanel) climatePanel.style.display = 'none';
         }
 
         function triggerDevReset() {
@@ -6621,6 +6626,8 @@
         }
 
         function stopCamera() {
+            pendingPhotoSendSnap = null;
+            showPendingPhotoSendBanner();
             if (rawVideoStream) {
                 rawVideoStream.getTracks().forEach(track => track.stop());
                 rawVideoStream = null;
@@ -6670,7 +6677,19 @@
 
                 // v0.43: capture auto-archives BOTH versions instantly -- no separate
                 // save step exists anymore, so 'save' is live by construction
-                archiveShot(canvas);
+                if (!archiveShot(canvas)) return;
+
+                if (pendingPhotoSendSnap) {
+                    const uid = pendingPhotoSendSnap.uid;
+                    pendingPhotoSendSnap = null;
+                    showPendingPhotoSendBanner();
+                    stopCamera();
+                    // The new shot is at index 0. Rebuild the picker first so BACK
+                    // shows it, then use the existing linked-recipient confirmation.
+                    openPhotoPicker(uid);
+                    if (document.getElementById('photo-pick-modal').style.display === 'flex') pickPhotoForMail(0);
+                    return;
+                }
 
                 // v0.160: Check if this is multi-stage evidence photo
                 if (window.pendingMultiStageEvidence) {
@@ -9527,6 +9546,7 @@
         }
 
         let photoPickTarget = null;
+        let pendingPhotoSendSnap = null; // recipient retained across CAM capture, not across unrelated navigation
         let photoPickMode = 'send'; // v0.47: 'send' = one-shot photo letter; 'attach' = hand the shot back to the message composer
         function openPhotoPicker(uid) {
             const c = contactByUid(uid);
@@ -9540,18 +9560,14 @@
                 return;
             }
             
-            if (!photoArchive.length) {
-                showNotification('DATABANK EMPTY -- TAKE A PHOTO FIRST.');
-                return;
-            }
-            
+            // Empty databanks still need SNAP NOW, especially for a first photo.
             photoPickMode = 'send';
             photoPickTarget = uid;
             const name = c ? c.name : (b && b.name ? b.name : 'UNKNOWN SIGNAL');
             document.getElementById('pp-title').innerText = 'TRANSMIT PHOTO TO: ' + name;
             let html = '<div class="photo-tile-grid">';
             photoArchive.forEach((e, i) => { html += `<div class="photo-tile" onclick="pickPhotoForMail(${i})"><img src="${entryPip(e)}"></div>`; });
-            document.getElementById('pp-grid').innerHTML = html + '</div>';
+            document.getElementById('pp-grid').innerHTML = photoArchive.length ? html + '</div>' : '<p>NO PHOTOS YET — TAP SNAP NOW.</p>';
             document.getElementById('photo-pick-modal').style.display = 'flex';
         }
 
@@ -9694,12 +9710,41 @@
             photoPickMode = 'send';
         }
 
-        // v0.119: Snap now button in photo picker
+        // v0.318: SEND PHOTO → SNAP NOW leaves the contact overlay behind, opens
+        // the actual CAM sensor, then returns the captured shot to THIS recipient.
+        function showPendingPhotoSendBanner() {
+            const banner = document.getElementById('cam-send-photo-banner');
+            if (!banner) return;
+            banner.style.display = pendingPhotoSendSnap ? 'flex' : 'none';
+            const label = document.getElementById('cam-send-photo-target');
+            if (label && pendingPhotoSendSnap) {
+                const c = contactByUid(pendingPhotoSendSnap.uid);
+                label.textContent = 'SNAP PHOTO FOR ' + (c?.name || 'SELECTED CONTACT');
+            }
+        }
+        function cancelPendingPhotoSend() {
+            const pending = pendingPhotoSendSnap;
+            stopCamera();
+            if (pending?.uid && contactByUid(pending.uid)) {
+                switchMainTab(pending.fromTab || 'data');
+                openContactSheet(pending.uid);
+            }
+        }
         function snapNowForPicker() {
-            // Reverted to original flow: switch to camera tab
+            if (photoPickMode === 'send' && photoPickTarget) {
+                const fromTab = document.querySelector('.nav-tabs .nav-item.active')?.textContent?.trim().toLowerCase() || 'data';
+                pendingPhotoSendSnap = {uid:photoPickTarget,fromTab};
+                document.getElementById('contact-modal').style.display = 'none';
+                document.getElementById('photo-pick-modal').style.display = 'none';
+                switchMainTab('cam');
+                showPendingPhotoSendBanner();
+                startCamera(); // called directly from the user's tap for camera permission
+                return;
+            }
+            // Non-send picker modes retain their existing CAM route.
             document.getElementById('photo-pick-modal').style.display = 'none';
             switchMainTab('cam');
-            showNotification('TAKE PHOTO, THEN RETURN TO QUEST TO ATTACH');
+            showNotification('TAKE PHOTO, THEN RETURN TO THE DATABANK.');
         }
 
         function pickPhotoForMail(idx) {
@@ -9748,7 +9793,7 @@
             }
             showCustomPrompt('TRANSMIT THIS PHOTO TO ' + name + '?', [
                 { label: 'SEND PHOTO', action: () => { sendPhotoMail(c || { uid: photoPickTarget, name: name }, entry); } },
-                { label: 'BACK', color: 'var(--pip-color-dim)', action: () => { document.getElementById('photo-pick-modal').style.display = 'flex'; } }
+                { label: 'BACK', color: 'var(--pip-color-dim)', action: () => openPhotoPicker(photoPickTarget) }
             ]);
         }
 
@@ -11470,7 +11515,6 @@
             }
             
             document.getElementById('overseer-display-modal').style.display = 'flex';
-            renderRadClimateControls();
             const markerStatus = document.getElementById('overseer-marker-status');
             if (markerStatus) { markerStatus.textContent = ''; markerStatus.style.display = 'none'; }
             updateOverseerSelectedMarkerAction();
